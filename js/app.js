@@ -173,6 +173,16 @@
     return null;
   }
 
+  function withTimeout(promise, ms, label) {
+    let timer;
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Таймаут (${ms} мс): ${label}`)), ms);
+      })
+    ]).finally(() => clearTimeout(timer));
+  }
+
   // Smart BLE GATT write with Bluefy fallback
   async function writeCharacteristicSmart(char, dataBytes) {
     const uuid = char.uuid;
@@ -180,21 +190,21 @@
     const props = char.properties || {};
 
     if (mode === 'withoutResponse' && char.writeValueWithoutResponse) {
-      await char.writeValueWithoutResponse(dataBytes);
+      await withTimeout(char.writeValueWithoutResponse(dataBytes), 4000, 'writeWithoutResponse');
       return;
     }
     if (mode === 'withResponse' && char.writeValueWithResponse) {
-      await char.writeValueWithResponse(dataBytes);
+      await withTimeout(char.writeValueWithResponse(dataBytes), 4000, 'writeWithResponse');
       return;
     }
     if (mode === 'legacy') {
-      await char.writeValue(dataBytes);
+      await withTimeout(char.writeValue(dataBytes), 4000, 'writeValue');
       return;
     }
 
     if ((props.writeWithoutResponse || props.writeWithoutResponse === undefined) && typeof char.writeValueWithoutResponse === 'function') {
       try {
-        await char.writeValueWithoutResponse(dataBytes);
+        await withTimeout(char.writeValueWithoutResponse(dataBytes), 4000, 'writeWithoutResponse');
         state.preferredWriteMode[uuid] = 'withoutResponse';
         return;
       } catch (e) {
@@ -204,7 +214,7 @@
 
     if (typeof char.writeValueWithResponse === 'function') {
       try {
-        await char.writeValueWithResponse(dataBytes);
+        await withTimeout(char.writeValueWithResponse(dataBytes), 4000, 'writeWithResponse');
         state.preferredWriteMode[uuid] = 'withResponse';
         return;
       } catch (e) {
@@ -212,7 +222,7 @@
       }
     }
 
-    await char.writeValue(dataBytes);
+    await withTimeout(char.writeValue(dataBytes), 4000, 'writeValue');
     state.preferredWriteMode[uuid] = 'legacy';
   }
 
@@ -284,21 +294,25 @@
   const bleQueue = new BleCommandQueue();
 
   // BLE Connect / Disconnect
+  let connectAttemptId = 0;
+
   async function findIdealLedService(server) {
     for (const uuid of [UUIDS.SERVICE_PRIMARY, UUIDS.SERVICE_FALLBACK]) {
       try {
-        const svc = await server.getPrimaryService(uuid);
+        logDiagnostic(`Поиск сервиса ${uuid.slice(4,8)}...`);
+        const svc = await withTimeout(server.getPrimaryService(uuid), 5000, `getPrimaryService(${uuid.slice(4,8)})`);
         logDiagnostic(`Найден сервис: ${svc.uuid}`);
         return svc;
       } catch (e) {
-        logDiagnostic(`Сервис ${uuid.slice(4,8)} недоступен (${e.message})`, true);
+        logDiagnostic(`Сервис ${uuid.slice(4,8)}: ${e.message}`, true);
       }
     }
-    const all = await server.getPrimaryServices();
+    logDiagnostic('Перебор всех GATT-сервисов...');
+    const all = await withTimeout(server.getPrimaryServices(), 6000, 'getPrimaryServices');
     logDiagnostic(`Доступные сервисы: [${all.map(s => s.uuid.slice(4,8)).join(', ')}]`);
-    const match = all.find(s => /fff0|ffe0/i.test(s.uuid));
+    const match = all.find(s => /fff0|ffe0/i.test(s.uuid)) || all.find(s => !/1800|1801|180a/i.test(s.uuid));
     if (match) return match;
-    throw new Error('Не найден GATT-сервис fff0 / ffe0');
+    throw new Error(`Не найден сервис fff0/ffe0 (есть: ${all.map(s => s.uuid.slice(4,8)).join(', ') || 'пусто'})`);
   }
 
   async function connectBle(usePrefixFilter) {
@@ -307,9 +321,13 @@
       return;
     }
 
+    const attemptId = ++connectAttemptId;
+    const isAborted = () => attemptId !== connectAttemptId;
+
     try {
       state.preferredWriteMode = {};
-      updateConnectionStatus('connecting', 'Поиск BLE...');
+      updateConnectionStatus('connecting', '1/4 Выбор BLE...');
+      logDiagnostic(usePrefixFilter ? 'Шаг 1/4: Поиск ISP/IDL/IDEALLED...' : 'Шаг 1/4: Поиск всех BLE устройств...');
 
       const optionalServices = [UUIDS.SERVICE_PRIMARY, UUIDS.SERVICE_FALLBACK, UUIDS.SERVICE_AE00];
       const options = usePrefixFilter
@@ -324,21 +342,43 @@
         : { acceptAllDevices: true, optionalServices };
 
       const device = await navigator.bluetooth.requestDevice(options);
+      if (isAborted()) return;
+
       state.bleDevice = device;
       device.removeEventListener('gattserverdisconnected', handleBleDisconnected);
       device.addEventListener('gattserverdisconnected', handleBleDisconnected);
 
       const devName = device.name || device.id || 'idealLED';
-      updateConnectionStatus('connecting', `Подключение к ${devName}...`);
-      const server = await device.gatt.connect();
+      updateConnectionStatus('connecting', `2/4 GATT ${devName}...`);
+      logDiagnostic(`Шаг 2/4: Выбрано "${devName}", вызов device.gatt.connect()...`);
+
+      let server;
+      try {
+        server = await withTimeout(device.gatt.connect(), 10000, 'gatt.connect');
+      } catch (connErr) {
+        if (isAborted()) return;
+        logDiagnostic(`Первая попытка GATT не удалась (${connErr.message}), повтор через 400 мс...`, true);
+        await new Promise(r => setTimeout(r, 400));
+        if (isAborted()) return;
+        server = await withTimeout(device.gatt.connect(), 10000, 'gatt.connect (retry)');
+      }
+      if (isAborted()) return;
 
       // CoreBluetooth / Bluefy stabilization delay
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 350));
+      if (isAborted()) return;
       if (!device.gatt.connected) throw new Error('Устройство разорвало соединение сразу после подключения');
 
+      updateConnectionStatus('connecting', '3/4 Сервисы...');
+      logDiagnostic('Шаг 3/4: Получение GATT-сервиса...');
       const service = await findIdealLedService(server);
-      const chars = await service.getCharacteristics();
-      logDiagnostic(`Характеристики: ${chars.map(c => c.uuid.slice(0,8)).join(', ')}`);
+      if (isAborted()) return;
+
+      updateConnectionStatus('connecting', '4/4 Характеристики...');
+      logDiagnostic('Шаг 4/4: Чтение характеристик...');
+      const chars = await withTimeout(service.getCharacteristics(), 6000, 'getCharacteristics');
+      if (isAborted()) return;
+      logDiagnostic(`Характеристики: ${chars.map(c => `${c.uuid.slice(4,8)}(W:${c.properties.write?1:0},WnR:${c.properties.writeWithoutResponse?1:0},N:${c.properties.notify?1:0})`).join(', ')}`);
 
       // Resolve 8none1/idealLED characteristics first, then fallback to fff3/fff4
       const cmdChar =
@@ -359,46 +399,47 @@
       state.dataChar = dataChar;
       state.notifyChar = notifyChar;
 
-      // If only fff3 exists and no 9600/960a, suggest TYPE2 or LEGACY cleanly
       if (cmdChar.uuid.toLowerCase() === UUIDS.WRITE_CMD) {
         state.detectedType = 'TYPE2';
         logDiagnostic(`Протокол 8none1/idealLED: CMD=9600, DATA=${dataChar ? '960a' : 'нет'}`);
       } else {
         state.detectedType = 'LEGACY';
-        logDiagnostic(`Обнаружен контроллер без 9600 (${cmdChar.uuid.slice(4,8)}), авторежим LEGACY`);
+        logDiagnostic(`Характеристика без 9600 (${cmdChar.uuid.slice(4,8)}), авторежим LEGACY`);
       }
 
-      // Read firmware descriptor 0x2901 if present (used by 8none1/idealLED to distinguish TYPE1/TYPE2)
-      try {
-        if (typeof cmdChar.getDescriptor === 'function') {
-          const desc = await cmdChar.getDescriptor(UUIDS.DESCRIPTOR_FW);
-          const val = await desc.readValue();
-          const fw = bytesToAscii(new Uint8Array(val.buffer)).replace(/\./g, '').trim();
-          if (fw) {
-            state.firmwareVersion = fw;
-            state.detectedType = detectCommandType(fw);
-            logDiagnostic(`Прошивка (2901): "${fw}" → ${state.detectedType}`);
-          }
-        }
-      } catch (descErr) {
-        logDiagnostic(`Дескриптор 2901 не прочитан (${descErr.message}) — используем ${state.detectedType}`);
-      }
-
-      if (notifyChar) {
-        try {
-          await notifyChar.startNotifications();
-          notifyChar.addEventListener('characteristicvaluechanged', handleBleNotification);
-          logDiagnostic(`Notify активен: ${notifyChar.uuid.slice(0,8)}`);
-        } catch (nErr) {
-          logDiagnostic(`Notify отклонён iOS/контроллером: ${nErr.message}`, true);
-        }
-      }
-
+      // Mark connected immediately so optional descriptor/notify quirks in Bluefy iOS never hang UI
       state.isConnected = true;
       state.deviceName = devName;
       updateProtocolBadge();
       updateConnectionStatus('connected', `Подключено: ${devName}`);
       showToast(`Подключено к ${devName}`, 'success');
+
+      // Optional non-blocking firmware descriptor 0x2901 (skip quickly if Bluefy hangs)
+      try {
+        if (typeof cmdChar.getDescriptor === 'function') {
+          const desc = await withTimeout(cmdChar.getDescriptor(UUIDS.DESCRIPTOR_FW), 2000, 'getDescriptor');
+          const val = await withTimeout(desc.readValue(), 2000, 'readDescriptor');
+          const fw = bytesToAscii(new Uint8Array(val.buffer)).replace(/\./g, '').trim();
+          if (fw) {
+            state.firmwareVersion = fw;
+            state.detectedType = detectCommandType(fw);
+            updateProtocolBadge();
+            logDiagnostic(`Прошивка (2901): "${fw}" → ${state.detectedType}`);
+          }
+        }
+      } catch (descErr) {
+        logDiagnostic(`Дескриптор 2901 пропущен (${descErr.message})`);
+      }
+
+      if (notifyChar) {
+        try {
+          await withTimeout(notifyChar.startNotifications(), 2500, 'startNotifications');
+          notifyChar.addEventListener('characteristicvaluechanged', handleBleNotification);
+          logDiagnostic(`Notify активен: ${notifyChar.uuid.slice(4,8)}`);
+        } catch (nErr) {
+          logDiagnostic(`Notify пропущен (${nErr.message})`, true);
+        }
+      }
 
       await new Promise(r => setTimeout(r, 80));
       if (activeProtocol() !== 'LEGACY') {
@@ -406,6 +447,7 @@
       }
       bleQueue.enqueueSteps(Commands.power(state.isOn, activeProtocol()), 'POWER');
     } catch (err) {
+      if (isAborted()) return;
       if (err?.name === 'NotFoundError') {
         logDiagnostic('Выбор устройства отменён');
       } else {
@@ -472,6 +514,7 @@
     const text = document.getElementById('statusText');
     const group = document.getElementById('connectButtonsGroup');
     const btnDisc = document.getElementById('btnDisconnect');
+    const btnCancel = document.getElementById('btnCancelConnect');
 
     dot.className = 'w-2.5 h-2.5 rounded-full transition-colors';
     if (status === 'connected') {
@@ -479,19 +522,23 @@
       text.textContent = label || 'Подключено';
       group.classList.add('hidden');
       btnDisc.classList.remove('hidden');
+      btnCancel?.classList.add('hidden');
     } else if (status === 'connecting') {
       dot.classList.add('bg-amber-400', 'animate-ping');
       text.textContent = label || 'Подключение...';
+      btnCancel?.classList.remove('hidden');
     } else if (status === 'demo') {
       dot.classList.add('bg-amber-400', 'shadow-[0_0_8px_#fbbf24]');
       text.textContent = 'Демо-режим';
       group.classList.remove('hidden');
       btnDisc.classList.add('hidden');
+      btnCancel?.classList.add('hidden');
     } else {
       dot.classList.add('bg-slate-500');
       text.textContent = 'Отключено';
       group.classList.remove('hidden');
       btnDisc.classList.add('hidden');
+      btnCancel?.classList.add('hidden');
     }
   }
 
@@ -1037,7 +1084,18 @@
     const time = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
     state.packetLogs.unshift({ time, ...entry });
     if (state.packetLogs.length > 100) state.packetLogs.pop();
-    document.getElementById('packetCounterBadge').textContent = String(state.packetLogs.length);
+    const countStr = String(state.packetLogs.length);
+    document.getElementById('packetCounterBadge').textContent = countStr;
+    const hdrCount = document.getElementById('headerLogCount');
+    if (hdrCount) hdrCount.textContent = countStr;
+
+    const liveText = document.getElementById('liveDiagText');
+    if (liveText) {
+      liveText.textContent = `[${time}] ${entry.label}: ${entry.desc}`;
+      liveText.className = entry.dir === 'WARN'
+        ? 'text-amber-300 truncate'
+        : (entry.dir === 'RX' ? 'text-emerald-300 truncate' : 'text-slate-300 truncate');
+    }
     renderPacketLogs();
   }
 
@@ -1111,6 +1169,13 @@
     document.getElementById('btnConnectAll').addEventListener('click', () => connectBle(false));
     document.getElementById('btnConnectIsp').addEventListener('click', () => connectBle(true));
     document.getElementById('btnDisconnect').addEventListener('click', disconnectBle);
+    document.getElementById('btnOpenLogsQuick')?.addEventListener('click', () => switchTab('settings'));
+    document.getElementById('btnCancelConnect')?.addEventListener('click', () => {
+      connectAttemptId++;
+      if (state.bleDevice?.gatt?.connected) state.bleDevice.gatt.disconnect();
+      logDiagnostic('Подключение сброшено пользователем', true);
+      updateConnectionStatus(state.isDemoMode ? 'demo' : 'disconnected');
+    });
 
     const demoToggle = document.getElementById('demoModeToggle');
     demoToggle.addEventListener('change', () => {
