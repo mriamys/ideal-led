@@ -1,5 +1,6 @@
 /**
- * idealLED BLE Studio — UI, Web Bluetooth (Bluefy iOS + Chrome), Canvas 60 FPS & Graffiti Engine.
+ * idealLED BLE Studio — Modern UI, Web Bluetooth (Bluefy iOS + Chrome),
+ * Auto-Random Effect/Color DJ, Daily On/Off Scheduler, Sleep Timer, WakeLock & Graffiti.
  */
 (function () {
   'use strict';
@@ -7,35 +8,34 @@
   const { UUIDS, detectCommandType, Commands } = window.IdealProtocol;
   const { encrypt, decrypt, bytesToHex, bytesToAscii, selfTest } = window.IdealAes;
 
-  const STORAGE_FAVORITES_KEY = 'idealled_favorite_colors_v2';
-  const STORAGE_PIXEL_KEY = 'idealled_graffiti_pixels_v1';
+  const STORAGE_FAVORITES_KEY = 'idealled_favorite_colors_v3';
+  const STORAGE_AUTOMATION_KEY = 'idealled_automation_v1';
 
   const COLOR_PRESETS = [
-    { name: 'Тёплый',   hex: '#FFD28A', r: 255, g: 210, b: 138 },
-    { name: 'Холодный', hex: '#F4F8FF', r: 244, g: 248, b: 255 },
-    { name: 'Красный',  hex: '#FF1E1E', r: 255, g: 30,  b: 30  },
-    { name: 'Оранжевый',hex: '#FF6B00', r: 255, g: 107, b: 0   },
-    { name: 'Жёлтый',   hex: '#FFD600', r: 255, g: 214, b: 0   },
-    { name: 'Зелёный',  hex: '#00E65B', r: 0,   g: 230, b: 91  },
-    { name: 'Бирюзовый',hex: '#00D4FF', r: 0,   g: 212, b: 255 },
-    { name: 'Синий',    hex: '#1E5BFF', r: 30,  g: 91,  b: 255 },
-    { name: 'Фиолет.',  hex: '#9D00FF', r: 157, g: 0,   b: 255 },
-    { name: 'Розовый',  hex: '#FF1E8A', r: 255, g: 30,  b: 138 }
+    { name: 'Тёплый',    hex: '#FFD28A', r: 255, g: 210, b: 138 },
+    { name: 'Холодный',  hex: '#F4F8FF', r: 244, g: 248, b: 255 },
+    { name: 'Красный',   hex: '#FF1E1E', r: 255, g: 30,  b: 30  },
+    { name: 'Оранжевый', hex: '#FF6B00', r: 255, g: 107, b: 0   },
+    { name: 'Жёлтый',    hex: '#FFD600', r: 255, g: 214, b: 0   },
+    { name: 'Зелёный',   hex: '#00E65B', r: 0,   g: 230, b: 91  },
+    { name: 'Бирюзовый', hex: '#00D4FF', r: 0,   g: 212, b: 255 },
+    { name: 'Синий',     hex: '#1E5BFF', r: 30,  g: 91,  b: 255 },
+    { name: 'Фиолет.',   hex: '#9D00FF', r: 157, g: 0,   b: 255 },
+    { name: 'Розовый',   hex: '#FF1E8A', r: 255, g: 30,  b: 138 }
   ];
 
-  // Effects 1..10 match 8none1/idealLED EFFECT_MAP (clamped safely <= 11)
   const BUILTIN_EFFECTS = [
-    { id: 0,  name: 'Статичный', desc: 'Ровный цвет (SGLS)' },
-    { id: 1,  name: 'Effect 01', desc: 'Перетекание палитры' },
-    { id: 2,  name: 'Effect 02', desc: 'Бегущие цвета' },
-    { id: 3,  name: 'Effect 03', desc: 'Волна спектра' },
-    { id: 4,  name: 'Effect 04', desc: 'Вспышки / строб' },
-    { id: 5,  name: 'Effect 05', desc: 'Мягкое дыхание' },
-    { id: 6,  name: 'Effect 06', desc: 'Метеор / комета' },
-    { id: 7,  name: 'Effect 07', desc: 'Секционный бег' },
-    { id: 8,  name: 'Effect 08', desc: 'Конфетти / искра' },
-    { id: 9,  name: 'Effect 09', desc: 'Радужный градиент' },
-    { id: 10, name: 'Effect 10', desc: 'Смешанный цикл' }
+    { id: 0,  name: 'Статичный', desc: 'Ровное свечение',     bar: 'bg-sky-400' },
+    { id: 1,  name: 'Эффект 01', desc: 'Плавный спектр',      bar: 'effect-bar-rainbow' },
+    { id: 2,  name: 'Эффект 02', desc: 'Бегущая волна',       bar: 'effect-bar-ocean' },
+    { id: 3,  name: 'Эффект 03', desc: 'Цветовой поток',      bar: 'effect-bar-cyber' },
+    { id: 4,  name: 'Эффект 04', desc: 'Динамичный строб',    bar: 'effect-bar-fire' },
+    { id: 5,  name: 'Эффект 05', desc: 'Мягкое дыхание',      bar: 'effect-bar-pulse' },
+    { id: 6,  name: 'Эффект 06', desc: 'Падающая комета',     bar: 'effect-bar-ocean' },
+    { id: 7,  name: 'Эффект 07', desc: 'Секционный бег',      bar: 'effect-bar-rainbow' },
+    { id: 8,  name: 'Эффект 08', desc: 'Искры и вспышки',     bar: 'effect-bar-cyber' },
+    { id: 9,  name: 'Эффект 09', desc: 'Градиентный перелив', bar: 'effect-bar-fire' },
+    { id: 10, name: 'Эффект 10', desc: 'Смешанный цикл',      bar: 'effect-bar-rainbow' }
   ];
 
   const PALETTE_PRESETS = {
@@ -56,6 +56,10 @@
       { r: 255, g: 0, b: 140 }, { r: 0, g: 240, b: 255 }, { r: 140, g: 0, b: 255 },
       { r: 255, g: 40, b: 90 }
     ],
+    sunset: [
+      { r: 255, g: 50, b: 80 }, { r: 255, g: 120, b: 30 }, { r: 255, g: 200, b: 60 },
+      { r: 180, g: 40, b: 140 }
+    ],
     xmas: [
       { r: 255, g: 0, b: 0 }, { r: 0, g: 255, b: 0 }, { r: 255, g: 200, b: 40 },
       { r: 255, g: 255, b: 255 }
@@ -66,7 +70,6 @@
 
   const state = {
     isConnected: false,
-    isDemoMode: false,
     deviceName: '',
     bleDevice: null,
     cmdChar: null,
@@ -74,7 +77,7 @@
     notifyChar: null,
     preferredWriteMode: {},
 
-    protocolMode: 'AUTO', // AUTO | TYPE2 | TYPE1 | LEGACY
+    protocolMode: 'AUTO',
     detectedType: 'TYPE2',
     firmwareVersion: '',
 
@@ -88,16 +91,35 @@
     brightness: 80,
     speed: 50,
     reverse: false,
-    modeId: 0, // 0 = Static, 1..10 = Effect, 999 = Graffiti preview
+    modeId: 0,
     effectPalette: PALETTE_PRESETS.rainbow.map(c => ({ ...c })),
 
     ledCount: 60,
     rgbOrder: 1,
 
-    graffitiMode: 2, // 0=flash, 1=fade, 2=solid
+    graffitiMode: 2,
     graffitiSpeed: 60,
     graffitiLiveSend: true,
     pixels: [],
+
+    // Random & Schedule state
+    randomEnabled: false,
+    randomIntervalSec: 30,
+    randomKind: 'effects_palette', // effects_palette | effects_only | colors | mix
+    randomSpeedReverse: true,
+    randomEffectPool: [1, 2, 3, 5, 6, 7, 8, 9, 10], // Exclude strobe (#4) by default, user can toggle any
+    randomNextSwitchAt: 0,
+
+    schedOnEnabled: false,
+    schedOnTime: '09:00',
+    schedOnAction: 'restore',
+    schedOffEnabled: false,
+    schedOffTime: '21:00',
+    lastTriggeredOnMinute: '',
+    lastTriggeredOffMinute: '',
+
+    sleepOffAt: 0,
+    wakeLock: null,
 
     favorites: [],
     packetLogs: []
@@ -116,7 +138,6 @@
     state.pixels = next;
   }
 
-  // Global error handler (useful on iPhone Bluefy)
   function showGlobalError(msg) {
     const banner = document.getElementById('globalErrorBanner');
     const textEl = document.getElementById('globalErrorText');
@@ -128,7 +149,7 @@
   window.onerror = (m, s, l, c, err) => { showGlobalError(err?.stack || `${m} (${l}:${c})`); return false; };
   window.addEventListener('unhandledrejection', e => showGlobalError(`Promise Error: ${e.reason?.message || e.reason}`));
 
-  // Color helpers
+  // Color Helpers
   function hsvToRgb(h, s, v) {
     const c = v * s;
     const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
@@ -173,6 +194,7 @@
     return null;
   }
 
+  // Timeout & BLE Write
   function withTimeout(promise, ms, label) {
     let timer;
     return Promise.race([
@@ -183,7 +205,6 @@
     ]).finally(() => clearTimeout(timer));
   }
 
-  // Smart BLE GATT write with Bluefy fallback
   async function writeCharacteristicSmart(char, dataBytes) {
     const uuid = char.uuid;
     const mode = state.preferredWriteMode[uuid];
@@ -259,30 +280,28 @@
       try {
         while (this.queue.length > 0) {
           const { step } = this.queue.shift();
+          if (!state.isConnected) continue;
+
           const payload = step.encrypt ? encrypt(step.raw) : step.raw;
           const char = step.target === 'data' ? (state.dataChar || state.cmdChar) : state.cmdChar;
-          const charTag = step.target === 'data' ? '960a' : (char ? char.uuid.slice(4, 8) : 'cmd');
+          if (!char) continue;
+          const charTag = step.target === 'data' ? '960a' : char.uuid.slice(4, 8);
 
-          if (state.isConnected || state.isDemoMode) {
-            appendPacketLog({
-              dir: 'TX',
-              charTag,
-              label: step.label,
-              desc: step.desc,
-              rawHex: bytesToHex(step.raw),
-              encHex: step.encrypt ? bytesToHex(payload) : 'UNENCRYPTED',
-              isDemo: !state.isConnected && state.isDemoMode
-            });
-          }
+          appendPacketLog({
+            dir: 'TX',
+            charTag,
+            label: step.label,
+            desc: step.desc,
+            rawHex: bytesToHex(step.raw),
+            encHex: step.encrypt ? bytesToHex(payload) : 'UNENCRYPTED'
+          });
 
-          if (state.isConnected && char) {
-            try {
-              await writeCharacteristicSmart(char, payload);
-              if (this.queue.length > 0) await new Promise(r => setTimeout(r, 25));
-            } catch (err) {
-              logDiagnostic(`Ошибка BLE записи (${step.label}): ${err.message}`, true);
-              showToast(`Ошибка BLE: ${err.message}`, 'error');
-            }
+          try {
+            await writeCharacteristicSmart(char, payload);
+            if (this.queue.length > 0) await new Promise(r => setTimeout(r, 25));
+          } catch (err) {
+            logDiagnostic(`Ошибка BLE записи (${step.label}): ${err.message}`, true);
+            showToast(`Ошибка BLE: ${err.message}`, 'error');
           }
         }
       } finally {
@@ -293,7 +312,7 @@
 
   const bleQueue = new BleCommandQueue();
 
-  // BLE Connect / Disconnect
+  // BLE Connect / Disconnect (hardened for Bluefy iOS)
   let connectAttemptId = 0;
 
   async function findIdealLedService(server) {
@@ -307,9 +326,7 @@
         logDiagnostic(`Сервис ${uuid.slice(4,8)}: ${e.message}`, true);
       }
     }
-    logDiagnostic('Перебор всех GATT-сервисов...');
     const all = await withTimeout(server.getPrimaryServices(), 6000, 'getPrimaryServices');
-    logDiagnostic(`Доступные сервисы: [${all.map(s => s.uuid.slice(4,8)).join(', ')}]`);
     const match = all.find(s => /fff0|ffe0/i.test(s.uuid)) || all.find(s => !/1800|1801|180a/i.test(s.uuid));
     if (match) return match;
     throw new Error(`Не найден сервис fff0/ffe0 (есть: ${all.map(s => s.uuid.slice(4,8)).join(', ') || 'пусто'})`);
@@ -317,7 +334,7 @@
 
   async function connectBle(usePrefixFilter) {
     if (!('bluetooth' in navigator)) {
-      showToast('Web Bluetooth недоступен. На iPhone откройте сайт в приложении Bluefy!', 'error');
+      showToast('Откройте сайт на iPhone в приложении Bluefy!', 'error');
       return;
     }
 
@@ -326,17 +343,13 @@
 
     try {
       state.preferredWriteMode = {};
-      updateConnectionStatus('connecting', '1/4 Выбор BLE...');
-      logDiagnostic(usePrefixFilter ? 'Шаг 1/4: Поиск ISP/IDL/IDEALLED...' : 'Шаг 1/4: Поиск всех BLE устройств...');
+      updateConnectionStatus('connecting', 'Поиск...');
+      logDiagnostic(usePrefixFilter ? 'Шаг 1/4: Поиск ISP/IDL/IDEALLED...' : 'Шаг 1/4: Поиск всех BLE...');
 
       const optionalServices = [UUIDS.SERVICE_PRIMARY, UUIDS.SERVICE_FALLBACK, UUIDS.SERVICE_AE00];
       const options = usePrefixFilter
         ? {
-            filters: [
-              { namePrefix: 'ISP' },
-              { namePrefix: 'IDL' },
-              { namePrefix: 'IDEALLED' }
-            ],
+            filters: [{ namePrefix: 'ISP' }, { namePrefix: 'IDL' }, { namePrefix: 'IDEALLED' }],
             optionalServices
           }
         : { acceptAllDevices: true, optionalServices };
@@ -349,45 +362,40 @@
       device.addEventListener('gattserverdisconnected', handleBleDisconnected);
 
       const devName = device.name || device.id || 'idealLED';
-      updateConnectionStatus('connecting', `2/4 GATT ${devName}...`);
-      logDiagnostic(`Шаг 2/4: Выбрано "${devName}", вызов device.gatt.connect()...`);
+      updateConnectionStatus('connecting', `GATT ${devName}...`);
+      logDiagnostic(`Шаг 2/4: Выбрано "${devName}", подключение GATT...`);
 
       let server;
       try {
         server = await withTimeout(device.gatt.connect(), 10000, 'gatt.connect');
       } catch (connErr) {
         if (isAborted()) return;
-        logDiagnostic(`Первая попытка GATT не удалась (${connErr.message}), повтор через 400 мс...`, true);
+        logDiagnostic(`Повтор GATT (${connErr.message})...`, true);
         await new Promise(r => setTimeout(r, 400));
         if (isAborted()) return;
         server = await withTimeout(device.gatt.connect(), 10000, 'gatt.connect (retry)');
       }
       if (isAborted()) return;
 
-      // CoreBluetooth / Bluefy stabilization delay
       await new Promise(r => setTimeout(r, 350));
       if (isAborted()) return;
-      if (!device.gatt.connected) throw new Error('Устройство разорвало соединение сразу после подключения');
+      if (!device.gatt.connected) throw new Error('Лента сбросила соединение');
 
-      updateConnectionStatus('connecting', '3/4 Сервисы...');
-      logDiagnostic('Шаг 3/4: Получение GATT-сервиса...');
+      updateConnectionStatus('connecting', 'Сервисы...');
       const service = await findIdealLedService(server);
       if (isAborted()) return;
 
-      updateConnectionStatus('connecting', '4/4 Характеристики...');
-      logDiagnostic('Шаг 4/4: Чтение характеристик...');
+      updateConnectionStatus('connecting', 'Характеристики...');
       const chars = await withTimeout(service.getCharacteristics(), 6000, 'getCharacteristics');
       if (isAborted()) return;
-      logDiagnostic(`Характеристики: ${chars.map(c => `${c.uuid.slice(4,8)}(W:${c.properties.write?1:0},WnR:${c.properties.writeWithoutResponse?1:0},N:${c.properties.notify?1:0})`).join(', ')}`);
 
-      // Resolve 8none1/idealLED characteristics first, then fallback to fff3/fff4
       const cmdChar =
         chars.find(c => c.uuid.toLowerCase() === UUIDS.WRITE_CMD) ||
         chars.find(c => c.uuid.toLowerCase() === UUIDS.LEGACY_WRITE) ||
         chars.find(c => c.uuid.toLowerCase().includes('fff3')) ||
         chars.find(c => c.properties.writeWithoutResponse || c.properties.write);
 
-      if (!cmdChar) throw new Error('Не найдена характеристика записи команд (9600 / fff3)');
+      if (!cmdChar) throw new Error('Не найдена характеристика записи (9600 / fff3)');
 
       const dataChar = chars.find(c => c.uuid.toLowerCase() === UUIDS.WRITE_DATA) || null;
       const notifyChar =
@@ -398,23 +406,14 @@
       state.cmdChar = cmdChar;
       state.dataChar = dataChar;
       state.notifyChar = notifyChar;
+      state.detectedType = cmdChar.uuid.toLowerCase() === UUIDS.WRITE_CMD ? 'TYPE2' : 'LEGACY';
 
-      if (cmdChar.uuid.toLowerCase() === UUIDS.WRITE_CMD) {
-        state.detectedType = 'TYPE2';
-        logDiagnostic(`Протокол 8none1/idealLED: CMD=9600, DATA=${dataChar ? '960a' : 'нет'}`);
-      } else {
-        state.detectedType = 'LEGACY';
-        logDiagnostic(`Характеристика без 9600 (${cmdChar.uuid.slice(4,8)}), авторежим LEGACY`);
-      }
-
-      // Mark connected immediately so optional descriptor/notify quirks in Bluefy iOS never hang UI
       state.isConnected = true;
       state.deviceName = devName;
       updateProtocolBadge();
-      updateConnectionStatus('connected', `Подключено: ${devName}`);
+      updateConnectionStatus('connected', devName);
       showToast(`Подключено к ${devName}`, 'success');
 
-      // Optional non-blocking firmware descriptor 0x2901 (skip quickly if Bluefy hangs)
       try {
         if (typeof cmdChar.getDescriptor === 'function') {
           const desc = await withTimeout(cmdChar.getDescriptor(UUIDS.DESCRIPTOR_FW), 2000, 'getDescriptor');
@@ -424,7 +423,7 @@
             state.firmwareVersion = fw;
             state.detectedType = detectCommandType(fw);
             updateProtocolBadge();
-            logDiagnostic(`Прошивка (2901): "${fw}" → ${state.detectedType}`);
+            logDiagnostic(`Прошивка: "${fw}" → ${state.detectedType}`);
           }
         }
       } catch (descErr) {
@@ -435,16 +434,14 @@
         try {
           await withTimeout(notifyChar.startNotifications(), 2500, 'startNotifications');
           notifyChar.addEventListener('characteristicvaluechanged', handleBleNotification);
-          logDiagnostic(`Notify активен: ${notifyChar.uuid.slice(4,8)}`);
+          logDiagnostic(`Notify активен: ${notifyChar.uuid.slice(0,8)}`);
         } catch (nErr) {
           logDiagnostic(`Notify пропущен (${nErr.message})`, true);
         }
       }
 
       await new Promise(r => setTimeout(r, 80));
-      if (activeProtocol() !== 'LEGACY') {
-        bleQueue.enqueueSteps(Commands.getVersion());
-      }
+      if (activeProtocol() !== 'LEGACY') bleQueue.enqueueSteps(Commands.getVersion());
       bleQueue.enqueueSteps(Commands.power(state.isOn, activeProtocol()), 'POWER');
     } catch (err) {
       if (isAborted()) return;
@@ -454,7 +451,7 @@
         logDiagnostic(`Ошибка подключения: ${err?.message || err}`, true);
         showToast(`Ошибка: ${err?.message || err}`, 'error');
       }
-      updateConnectionStatus(state.isDemoMode ? 'demo' : 'disconnected');
+      updateConnectionStatus('disconnected');
     }
   }
 
@@ -469,20 +466,18 @@
     state.dataChar = null;
     state.notifyChar = null;
     state.deviceName = '';
-    updateConnectionStatus(state.isDemoMode ? 'demo' : 'disconnected');
+    updateConnectionStatus('disconnected');
     logDiagnostic('BLE соединение закрыто');
     showToast('Лента отключена', 'info');
   }
 
   function handleBleNotification(event) {
     const raw = new Uint8Array(event.target.value.buffer);
-    let decHex = '—';
-    let ascii = '';
+    let decHex = '—', ascii = '';
     if (raw.length === 16) {
       const dec = decrypt(raw);
       decHex = bytesToHex(dec);
       ascii = bytesToAscii(dec);
-      // Detect firmware string from VE response
       if (ascii.includes('R0') || ascii.includes('TR')) {
         const cleanFw = ascii.replace(/[^A-Za-z0-9._-]/g, '');
         if (cleanFw.length >= 4) {
@@ -498,8 +493,7 @@
       label: 'NOTIFY',
       desc: ascii ? `ASCII: ${ascii}` : `${raw.length}B`,
       rawHex: bytesToHex(raw),
-      encHex: decHex,
-      isDemo: false
+      encHex: decHex
     });
   }
 
@@ -516,26 +510,22 @@
     const btnDisc = document.getElementById('btnDisconnect');
     const btnCancel = document.getElementById('btnCancelConnect');
 
-    dot.className = 'w-2.5 h-2.5 rounded-full transition-colors';
     if (status === 'connected') {
-      dot.classList.add('bg-emerald-400', 'shadow-[0_0_8px_#34d399]');
+      dot.className = 'absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 ring-2 ring-surface-950 shadow-[0_0_10px_#34d399]';
       text.textContent = label || 'Подключено';
+      text.className = 'text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-400/30';
       group.classList.add('hidden');
       btnDisc.classList.remove('hidden');
       btnCancel?.classList.add('hidden');
     } else if (status === 'connecting') {
-      dot.classList.add('bg-amber-400', 'animate-ping');
+      dot.className = 'absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-amber-400 ring-2 ring-surface-950 animate-ping';
       text.textContent = label || 'Подключение...';
+      text.className = 'text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-200 border border-amber-400/30';
       btnCancel?.classList.remove('hidden');
-    } else if (status === 'demo') {
-      dot.classList.add('bg-amber-400', 'shadow-[0_0_8px_#fbbf24]');
-      text.textContent = 'Демо-режим';
-      group.classList.remove('hidden');
-      btnDisc.classList.add('hidden');
-      btnCancel?.classList.add('hidden');
     } else {
-      dot.classList.add('bg-slate-500');
-      text.textContent = 'Отключено';
+      dot.className = 'absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-slate-500 ring-2 ring-surface-950';
+      text.textContent = 'Не подключено';
+      text.className = 'text-[11px] font-medium px-2 py-0.5 rounded-full bg-white/5 text-slate-300 border border-white/10';
       group.classList.remove('hidden');
       btnDisc.classList.add('hidden');
       btnCancel?.classList.add('hidden');
@@ -559,7 +549,7 @@
 
     const cx = size / 2, cy = size / 2;
     const outerR = size / 2 - 6;
-    const ringWidth = Math.max(22, Math.round(size * 0.115));
+    const ringWidth = Math.max(24, Math.round(size * 0.115));
     const innerR = outerR - ringWidth;
     const sqHalf = Math.floor((innerR - 10) * Math.SQRT1_2);
     wheelGeom = { size, cx, cy, outerR, innerR, sqLeft: cx - sqHalf, sqTop: cy - sqHalf, sqSize: sqHalf * 2 };
@@ -581,7 +571,7 @@
 
     wheelCtx.save();
     wheelCtx.beginPath();
-    if (wheelCtx.roundRect) wheelCtx.roundRect(sqLeft, sqTop, sqSize, sqSize, 8);
+    if (wheelCtx.roundRect) wheelCtx.roundRect(sqLeft, sqTop, sqSize, sqSize, 10);
     else wheelCtx.rect(sqLeft, sqTop, sqSize, sqSize);
     wheelCtx.clip();
 
@@ -610,13 +600,13 @@
   function drawHandle(x, y, fill) {
     wheelCtx.save();
     wheelCtx.beginPath();
-    wheelCtx.arc(x, y, 8, 0, Math.PI * 2);
+    wheelCtx.arc(x, y, 8.5, 0, Math.PI * 2);
     wheelCtx.fillStyle = fill;
     wheelCtx.fill();
     wheelCtx.lineWidth = 2.5;
     wheelCtx.strokeStyle = '#ffffff';
-    wheelCtx.shadowColor = 'rgba(0,0,0,0.7)';
-    wheelCtx.shadowBlur = 5;
+    wheelCtx.shadowColor = 'rgba(0,0,0,0.75)';
+    wheelCtx.shadowBlur = 6;
     wheelCtx.stroke();
     wheelCtx.restore();
   }
@@ -648,11 +638,10 @@
     }
   }
 
-  // State application
+  // Commands & UI State
   function sendCurrentColorBle() {
-    const proto = activeProtocol();
     bleQueue.enqueueDebounced('COLOR', () => Commands.color(state.r, state.g, state.b, {
-      protocolType: proto,
+      protocolType: activeProtocol(),
       brightness: state.brightness,
       fiveBitSafe: state.fiveBitSafe,
       r2: state.useDualColor ? state.r2 : state.r,
@@ -662,9 +651,8 @@
   }
 
   function sendCurrentEffectBle() {
-    const proto = activeProtocol();
     bleQueue.enqueueDebounced('EFFECT', () => Commands.effect(state.modeId, {
-      protocolType: proto,
+      protocolType: activeProtocol(),
       reverse: state.reverse,
       speed: state.speed,
       brightness: state.brightness,
@@ -703,9 +691,7 @@
     drawColorWheel();
 
     if (sendBle) {
-      if (state.modeId !== 0 && state.modeId !== 999) {
-        applyModeSelection(0, false);
-      }
+      if (state.modeId !== 0 && state.modeId !== 999) applyModeSelection(0, false);
       sendCurrentColorBle();
     }
   }
@@ -714,17 +700,13 @@
     state.brightness = Math.max(0, Math.min(100, Math.round(val)));
     document.getElementById('brightnessSlider').value = state.brightness;
     document.getElementById('brightnessValueLabel').textContent = `${state.brightness}%`;
-    document.getElementById('telemetryBrightness').textContent = `Яркость: ${state.brightness}%`;
+    document.getElementById('telemetryBrightness').textContent = `${state.brightness}%`;
 
     if (sendBle) {
       const proto = activeProtocol();
-      if (proto === 'LEGACY') {
-        bleQueue.enqueueDebounced('LIGHT', () => Commands.legacyBrightness(state.brightness), 55);
-      } else if (state.modeId > 0 && state.modeId <= 11) {
-        sendCurrentEffectBle();
-      } else {
-        sendCurrentColorBle();
-      }
+      if (proto === 'LEGACY') bleQueue.enqueueDebounced('LIGHT', () => Commands.legacyBrightness(state.brightness), 55);
+      else if (state.modeId >= 1 && state.modeId <= 11) sendCurrentEffectBle();
+      else sendCurrentColorBle();
     }
   }
 
@@ -732,15 +714,9 @@
     state.speed = Math.max(1, Math.min(100, Math.round(val)));
     document.getElementById('speedSlider').value = state.speed;
     document.getElementById('speedValueLabel').textContent = `${state.speed}%`;
-    document.getElementById('telemetrySpeed').textContent = `Скорость: ${state.speed}%`;
-
     if (sendBle) {
-      const proto = activeProtocol();
-      if (proto === 'LEGACY') {
-        bleQueue.enqueueDebounced('SPEED', () => Commands.legacySpeed(state.speed), 55);
-      } else if (state.modeId > 0 && state.modeId <= 11) {
-        sendCurrentEffectBle();
-      }
+      if (activeProtocol() === 'LEGACY') bleQueue.enqueueDebounced('SPEED', () => Commands.legacySpeed(state.speed), 55);
+      else if (state.modeId >= 1 && state.modeId <= 11) sendCurrentEffectBle();
     }
   }
 
@@ -752,15 +728,15 @@
     btn.setAttribute('aria-pressed', String(state.isOn));
 
     if (state.isOn) {
-      btn.className = 'inline-flex items-center gap-2.5 px-5 py-3 rounded-2xl font-semibold text-sm transition-all duration-200 cursor-pointer bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-lg shadow-emerald-500/15 hover:bg-emerald-500/30 active:scale-95';
-      label.textContent = 'ВКЛ';
-      sub.textContent = 'Лента включена';
-      sub.className = 'text-xs text-emerald-400 mt-0.5';
+      btn.className = 'btn-tactile power-orb-on flex items-center justify-center sm:justify-start gap-3.5 px-5 py-3.5 rounded-2xl border cursor-pointer shrink-0';
+      label.textContent = 'ВКЛЮЧЕНО';
+      sub.textContent = 'Нажмите чтобы выключить';
+      sub.className = 'block text-[11px] text-emerald-300/90';
     } else {
-      btn.className = 'inline-flex items-center gap-2.5 px-5 py-3 rounded-2xl font-semibold text-sm transition-all duration-200 cursor-pointer bg-surface-800 text-slate-400 border border-white/10 hover:bg-surface-700 active:scale-95';
-      label.textContent = 'ВЫКЛ';
-      sub.textContent = 'Питание отключено';
-      sub.className = 'text-xs text-slate-500 mt-0.5';
+      btn.className = 'btn-tactile power-orb-off flex items-center justify-center sm:justify-start gap-3.5 px-5 py-3.5 rounded-2xl border cursor-pointer shrink-0';
+      label.textContent = 'ВЫКЛЮЧЕНО';
+      sub.textContent = 'Нажмите чтобы включить';
+      sub.className = 'block text-[11px] text-slate-400';
     }
 
     if (sendBle) {
@@ -771,19 +747,19 @@
   function applyModeSelection(modeId, sendBle = true) {
     state.modeId = modeId;
     const preset = BUILTIN_EFFECTS.find(m => m.id === modeId);
-    const title = modeId === 999 ? 'Граффити (DIY)' : (preset ? preset.name : `Effect #${modeId}`);
+    const title = modeId === 999 ? 'Граффити' : (preset ? preset.name : `Эффект #${modeId}`);
 
     document.getElementById('activeModeBadge').textContent = title;
-    document.getElementById('telemetryMode').textContent = `Режим: ${title}`;
+    document.getElementById('telemetryMode').textContent = title;
 
     document.querySelectorAll('.mode-card').forEach(card => {
       const id = Number(card.dataset.modeId);
       if (id === state.modeId) {
-        card.classList.add('bg-sky-500/15', 'border-sky-500/50', 'ring-1', 'ring-sky-500/30');
-        card.classList.remove('bg-surface-950/75', 'border-white/5');
+        card.classList.add('bg-sky-500/15', 'border-sky-400/60', 'ring-1', 'ring-sky-400/35');
+        card.classList.remove('border-white/5');
       } else {
-        card.classList.remove('bg-sky-500/15', 'border-sky-500/50', 'ring-1', 'ring-sky-500/30');
-        card.classList.add('bg-surface-950/75', 'border-white/5');
+        card.classList.remove('bg-sky-500/15', 'border-sky-400/60', 'ring-1', 'ring-sky-400/35');
+        card.classList.add('border-white/5');
       }
     });
 
@@ -800,7 +776,7 @@
     renderGraffitiGrid();
     document.getElementById('ledCountInput').value = val;
     document.getElementById('ledCountBadge').textContent = `${val} шт.`;
-    document.getElementById('telemetryLeds').textContent = `LED: ${val}`;
+    document.getElementById('telemetryLeds').textContent = `${val} LED`;
 
     if (sendBle) {
       bleQueue.enqueueSteps(Commands.lampCount(val, activeProtocol()), 'LAMPN');
@@ -808,14 +784,271 @@
     }
   }
 
-  // Presets, Favorites & Effect Palette UI
+  // ============================================================================
+  // RANDOM AUTO-DJ & DAILY ON/OFF SCHEDULER + SLEEP TIMER
+  // ============================================================================
+  function saveAutomationConfig() {
+    try {
+      localStorage.setItem(STORAGE_AUTOMATION_KEY, JSON.stringify({
+        randomEnabled: state.randomEnabled,
+        randomIntervalSec: state.randomIntervalSec,
+        randomKind: state.randomKind,
+        randomSpeedReverse: state.randomSpeedReverse,
+        randomEffectPool: state.randomEffectPool,
+        schedOnEnabled: state.schedOnEnabled,
+        schedOnTime: state.schedOnTime,
+        schedOnAction: state.schedOnAction,
+        schedOffEnabled: state.schedOffEnabled,
+        schedOffTime: state.schedOffTime
+      }));
+    } catch {}
+  }
+
+  function loadAutomationConfig() {
+    try {
+      const cfg = JSON.parse(localStorage.getItem(STORAGE_AUTOMATION_KEY) || '{}');
+      if (typeof cfg.randomEnabled === 'boolean') state.randomEnabled = cfg.randomEnabled;
+      if (Number(cfg.randomIntervalSec) >= 3) state.randomIntervalSec = Number(cfg.randomIntervalSec);
+      if (cfg.randomKind) state.randomKind = cfg.randomKind;
+      if (typeof cfg.randomSpeedReverse === 'boolean') state.randomSpeedReverse = cfg.randomSpeedReverse;
+      if (Array.isArray(cfg.randomEffectPool) && cfg.randomEffectPool.length > 0) state.randomEffectPool = cfg.randomEffectPool;
+      if (typeof cfg.schedOnEnabled === 'boolean') state.schedOnEnabled = cfg.schedOnEnabled;
+      if (cfg.schedOnTime) state.schedOnTime = cfg.schedOnTime;
+      if (cfg.schedOnAction) state.schedOnAction = cfg.schedOnAction;
+      if (typeof cfg.schedOffEnabled === 'boolean') state.schedOffEnabled = cfg.schedOffEnabled;
+      if (cfg.schedOffTime) state.schedOffTime = cfg.schedOffTime;
+    } catch {}
+  }
+
+  function randomBrightPalette() {
+    const baseHue = Math.floor(Math.random() * 360);
+    const count = 3 + Math.floor(Math.random() * 4);
+    const step = 360 / count;
+    const arr = [];
+    for (let i = 0; i < count; i++) {
+      arr.push(hsvToRgb((baseHue + i * step + Math.random() * 25) % 360, 0.9 + Math.random() * 0.1, 1));
+    }
+    return arr;
+  }
+
+  function triggerRandomStep(force = false) {
+    if (!state.isOn && !force) return;
+    if (!state.isOn && force) applyPowerChange(true, true);
+
+    const pool = state.randomEffectPool.length > 0 ? state.randomEffectPool : [1, 2, 3, 5, 6, 7, 8, 9, 10];
+    let kind = state.randomKind;
+    if (kind === 'mix') {
+      kind = Math.random() < 0.7 ? 'effects_palette' : 'colors';
+    }
+
+    if (kind === 'colors') {
+      const hue = Math.floor(Math.random() * 360);
+      const rgb = hsvToRgb(hue, 0.85 + Math.random() * 0.15, 1);
+      applyColorChange(rgb.r, rgb.g, rgb.b, true, true);
+      logDiagnostic(`🎲 Рандом цвет: ${rgbToHex(rgb.r, rgb.g, rgb.b)}`);
+    } else {
+      // Pick different effect from current when possible
+      const candidates = pool.filter(id => id !== state.modeId);
+      const pickPool = candidates.length > 0 ? candidates : pool;
+      const nextEffect = pickPool[Math.floor(Math.random() * pickPool.length)];
+
+      if (kind === 'effects_palette') {
+        const presetKeys = Object.keys(PALETTE_PRESETS);
+        if (Math.random() < 0.45) {
+          const k = presetKeys[Math.floor(Math.random() * presetKeys.length)];
+          state.effectPalette = PALETTE_PRESETS[k].map(c => ({ ...c }));
+        } else {
+          state.effectPalette = randomBrightPalette();
+        }
+        renderEffectPalette();
+      }
+
+      if (state.randomSpeedReverse) {
+        state.speed = 35 + Math.floor(Math.random() * 55);
+        state.reverse = Math.random() < 0.5;
+        document.getElementById('speedSlider').value = state.speed;
+        document.getElementById('speedValueLabel').textContent = `${state.speed}%`;
+        document.getElementById('reverseToggle').checked = state.reverse;
+      }
+
+      applyModeSelection(nextEffect, true);
+      logDiagnostic(`🎲 Рандом: Эффект #${nextEffect} (скорость ${state.speed}%)`);
+    }
+
+    if (state.randomEnabled) {
+      state.randomNextSwitchAt = Date.now() + state.randomIntervalSec * 1000;
+    }
+  }
+
+  function renderRandomEffectPool() {
+    const grid = document.getElementById('randomEffectPoolGrid');
+    grid.innerHTML = BUILTIN_EFFECTS.filter(e => e.id >= 1 && e.id <= 10).map(e => {
+      const active = state.randomEffectPool.includes(e.id);
+      return `<button type="button" data-eid="${e.id}" class="rand-pool-chip btn-tactile px-3 py-1.5 rounded-xl text-xs font-medium border cursor-pointer ${
+        active
+          ? 'bg-fuchsia-500/25 text-fuchsia-200 border-fuchsia-400/50'
+          : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'
+      }">${e.name}</button>`;
+    }).join('');
+
+    grid.querySelectorAll('.rand-pool-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.dataset.eid);
+        const idx = state.randomEffectPool.indexOf(id);
+        if (idx !== -1) {
+          if (state.randomEffectPool.length === 1) return showToast('Оставьте хотя бы 1 эффект', 'error');
+          state.randomEffectPool.splice(idx, 1);
+        } else {
+          state.randomEffectPool.push(id);
+          state.randomEffectPool.sort((a, b) => a - b);
+        }
+        saveAutomationConfig();
+        renderRandomEffectPool();
+      });
+    });
+  }
+
+  function formatDuration(secTotal) {
+    const s = Math.max(0, Math.floor(secTotal));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h > 0) return `${h}ч ${String(m).padStart(2, '0')}м`;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  }
+
+  function getNextTimeDiffSec(hhmm) {
+    const [hh, mm] = (hhmm || '00:00').split(':').map(Number);
+    const now = new Date();
+    const target = new Date(now);
+    target.setHours(hh || 0, mm || 0, 0, 0);
+    if (target <= now) target.setDate(target.getDate() + 1);
+    return Math.round((target - now) / 1000);
+  }
+
+  function runAutomationTick() {
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const todayMinuteKey = `${now.toDateString()} ${hhmm}`;
+
+    // 1. Random DJ rotation
+    const randLabel = document.getElementById('randomCountdownLabel');
+    if (state.randomEnabled) {
+      if (!state.randomNextSwitchAt) state.randomNextSwitchAt = Date.now() + state.randomIntervalSec * 1000;
+      const remSec = Math.ceil((state.randomNextSwitchAt - Date.now()) / 1000);
+      if (remSec <= 0) {
+        triggerRandomStep(false);
+      } else {
+        randLabel.textContent = state.isOn ? `Следующий через ${formatDuration(remSec)}` : 'Ждёт включения ленты';
+      }
+    } else {
+      randLabel.textContent = 'Выключено';
+    }
+
+    // 2. Daily Auto-On
+    if (state.schedOnEnabled && state.schedOnTime === hhmm && state.lastTriggeredOnMinute !== todayMinuteKey) {
+      state.lastTriggeredOnMinute = todayMinuteKey;
+      logDiagnostic(`☀️ Расписание ${hhmm}: Автовключение (${state.schedOnAction})`);
+      showToast(`Расписание: включаю ленту (${hhmm})`, 'success');
+      applyPowerChange(true, true);
+      if (state.schedOnAction === 'random') {
+        state.randomEnabled = true;
+        document.getElementById('randomEnabledToggle').checked = true;
+        saveAutomationConfig();
+        setTimeout(() => triggerRandomStep(true), 200);
+      } else if (state.schedOnAction === 'warm') {
+        setTimeout(() => applyColorChange(255, 210, 138, true, true), 200);
+      } else if (state.schedOnAction === 'rainbow') {
+        state.effectPalette = PALETTE_PRESETS.rainbow.map(c => ({ ...c }));
+        renderEffectPalette();
+        setTimeout(() => applyModeSelection(1, true), 200);
+      }
+    }
+
+    // 3. Daily Auto-Off
+    if (state.schedOffEnabled && state.schedOffTime === hhmm && state.lastTriggeredOffMinute !== todayMinuteKey) {
+      state.lastTriggeredOffMinute = todayMinuteKey;
+      logDiagnostic(`🌙 Расписание ${hhmm}: Автовыключение`);
+      showToast(`Расписание: выключаю ленту (${hhmm})`, 'info');
+      applyPowerChange(false, true);
+    }
+
+    // 4. Sleep Timer
+    const sleepLabel = document.getElementById('sleepStatusLabel');
+    const sleepCancel = document.getElementById('sleepCancelBtn');
+    if (state.sleepOffAt > 0) {
+      const remSleep = Math.ceil((state.sleepOffAt - Date.now()) / 1000);
+      if (remSleep <= 0) {
+        state.sleepOffAt = 0;
+        sleepLabel.textContent = 'Сработал';
+        sleepCancel.classList.add('hidden');
+        logDiagnostic('💤 Таймер сна: выключаю ленту');
+        showToast('Таймер сна выключил ленту', 'info');
+        applyPowerChange(false, true);
+      } else {
+        sleepLabel.textContent = `Выкл через ${formatDuration(remSleep)}`;
+        sleepCancel.classList.remove('hidden');
+      }
+    } else {
+      sleepLabel.textContent = 'Не задан';
+      sleepCancel.classList.add('hidden');
+    }
+
+    // 5. Update Summary & Hero Pill
+    const schedParts = [];
+    if (state.schedOnEnabled) schedParts.push(`☀️ ${state.schedOnTime} (через ${formatDuration(getNextTimeDiffSec(state.schedOnTime))})`);
+    if (state.schedOffEnabled) schedParts.push(`🌙 ${state.schedOffTime} (через ${formatDuration(getNextTimeDiffSec(state.schedOffTime))})`);
+    document.getElementById('scheduleNextSummary').textContent = schedParts.length > 0 ? schedParts.join(' • ') : 'Не активно';
+
+    const pill = document.getElementById('activeAutomationPill');
+    const heroParts = [];
+    if (state.randomEnabled) {
+      const rem = Math.max(0, Math.ceil((state.randomNextSwitchAt - Date.now()) / 1000));
+      heroParts.push(`🎲 ${formatDuration(rem)}`);
+    }
+    if (state.sleepOffAt > 0) {
+      const remS = Math.max(0, Math.ceil((state.sleepOffAt - Date.now()) / 1000));
+      heroParts.push(`💤 ${formatDuration(remS)}`);
+    } else if (state.schedOffEnabled) {
+      heroParts.push(`🌙 ${state.schedOffTime}`);
+    }
+    if (heroParts.length > 0) {
+      pill.textContent = heroParts.join(' • ');
+      pill.classList.remove('hidden');
+    } else {
+      pill.classList.add('hidden');
+    }
+  }
+
+  async function setWakeLock(enabled) {
+    if (!('wakeLock' in navigator)) {
+      showToast('Браузер не поддерживает блокировку сна экрана', 'error');
+      document.getElementById('wakeLockToggle').checked = false;
+      return;
+    }
+    try {
+      if (enabled) {
+        state.wakeLock = await navigator.wakeLock.request('screen');
+        showToast('Экран не будет гаснуть', 'success');
+      } else if (state.wakeLock) {
+        await state.wakeLock.release();
+        state.wakeLock = null;
+        showToast('Блокировка сна отключена', 'info');
+      }
+    } catch (e) {
+      showToast(`WakeLock: ${e.message}`, 'error');
+      document.getElementById('wakeLockToggle').checked = false;
+    }
+  }
+
+  // Presets, Favorites & Effects UI
   function renderPresetColors() {
     const grid = document.getElementById('presetColorsGrid');
     grid.innerHTML = COLOR_PRESETS.map(p => `
       <button type="button" data-r="${p.r}" data-g="${p.g}" data-b="${p.b}"
-        class="preset-swatch flex flex-col items-center gap-1 p-1.5 rounded-xl bg-surface-950/70 hover:bg-surface-800 border border-white/10 transition cursor-pointer">
-        <span class="w-full h-6 rounded-lg shadow-inner border border-white/20" style="background-color: ${p.hex};"></span>
-        <span class="text-[10px] text-slate-400 truncate w-full text-center">${p.name}</span>
+        class="preset-swatch btn-tactile flex flex-col items-center gap-1.5 p-2 rounded-2xl glass-subcard hover:bg-white/10 transition cursor-pointer">
+        <span class="w-full h-7 rounded-xl shadow-inner border border-white/20" style="background-color: ${p.hex};"></span>
+        <span class="text-[10px] text-slate-300 truncate w-full text-center">${p.name}</span>
       </button>
     `).join('');
     grid.querySelectorAll('.preset-swatch').forEach(btn => {
@@ -839,16 +1072,16 @@
     const grid = document.getElementById('favoriteColorsGrid');
     document.getElementById('favoritesCount').textContent = String(state.favorites.length);
     if (state.favorites.length === 0) {
-      grid.innerHTML = '<span class="text-xs text-slate-500 italic">Нажмите «В избранное», чтобы сохранить цвет</span>';
+      grid.innerHTML = '<span class="text-xs text-slate-500 italic">Нажмите «+ Сохранить», чтобы добавить любимый оттенок</span>';
       return;
     }
     grid.innerHTML = state.favorites.map((fav, idx) => `
-      <div class="inline-flex items-center rounded-xl bg-surface-950 border border-white/10 overflow-hidden">
-        <button type="button" data-idx="${idx}" class="fav-apply-btn flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-surface-800 transition cursor-pointer">
+      <div class="inline-flex items-center rounded-xl glass-subcard overflow-hidden">
+        <button type="button" data-idx="${idx}" class="fav-apply-btn flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-white/10 transition cursor-pointer">
           <span class="w-4 h-4 rounded-md border border-white/25" style="background-color: ${fav.hex};"></span>
           <span class="text-[11px] font-mono text-slate-200">${fav.hex}</span>
         </button>
-        <button type="button" data-idx="${idx}" class="fav-del-btn px-2 py-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 text-xs transition cursor-pointer">×</button>
+        <button type="button" data-idx="${idx}" class="fav-del-btn px-2 py-1.5 text-slate-500 hover:text-rose-400 text-xs cursor-pointer">×</button>
       </div>
     `).join('');
     grid.querySelectorAll('.fav-apply-btn').forEach(b => b.addEventListener('click', () => {
@@ -866,12 +1099,15 @@
     const grid = document.getElementById('modesGrid');
     grid.innerHTML = BUILTIN_EFFECTS.map(m => `
       <button type="button" data-mode-id="${m.id}"
-        class="mode-card text-left p-3 rounded-xl bg-surface-950/75 hover:bg-surface-800 border border-white/5 transition cursor-pointer flex flex-col justify-between gap-1">
-        <div class="flex items-center justify-between w-full">
-          <span class="text-xs font-semibold text-white">${m.name}</span>
-          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-slate-400">#${m.id}</span>
+        class="mode-card btn-tactile text-left p-3 rounded-2xl glass-subcard hover:bg-white/10 border border-white/5 cursor-pointer flex flex-col justify-between gap-2">
+        <div class="w-full h-1.5 rounded-full ${m.bar} opacity-85"></div>
+        <div>
+          <div class="flex items-center justify-between w-full">
+            <span class="text-xs font-bold text-white">${m.name}</span>
+            <span class="text-[10px] font-mono text-slate-400">#${m.id}</span>
+          </div>
+          <span class="text-[11px] text-slate-400 block mt-0.5">${m.desc}</span>
         </div>
-        <span class="text-[11px] text-slate-400">${m.desc}</span>
       </button>
     `).join('');
     grid.querySelectorAll('.mode-card').forEach(c => {
@@ -884,8 +1120,8 @@
     container.innerHTML = state.effectPalette.map((c, idx) => {
       const hex = rgbToHex(c.r, c.g, c.b);
       return `
-        <div class="flex items-center gap-1.5 px-2 py-1 rounded-xl bg-surface-900 border border-white/10">
-          <input type="color" data-pidx="${idx}" value="${hex}" class="palette-color-input w-6 h-6 rounded bg-transparent border-0 cursor-pointer" />
+        <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/5 border border-white/10">
+          <input type="color" data-pidx="${idx}" value="${hex}" class="palette-color-input w-6 h-6 rounded-md bg-transparent border-0 cursor-pointer" />
           <span class="text-[10px] font-mono text-slate-300">${hex}</span>
           ${state.effectPalette.length > 1 ? `<button type="button" data-pidx="${idx}" class="palette-del-btn text-slate-500 hover:text-rose-400 text-xs px-1 cursor-pointer">×</button>` : ''}
         </div>
@@ -912,29 +1148,21 @@
     });
   }
 
-  // Graffiti / Pixel Painter UI
+  // Graffiti Painter
   let isPaintingPixels = false;
 
   function paintPixelAt(index) {
     if (index < 0 || index >= state.pixels.length) return;
     state.pixels[index] = {
-      r: state.r,
-      g: state.g,
-      b: state.b,
-      mode: state.graffitiMode,
-      speed: state.graffitiSpeed
+      r: state.r, g: state.g, b: state.b,
+      mode: state.graffitiMode, speed: state.graffitiSpeed
     };
     const cell = document.querySelector(`.pixel-cell[data-px="${index}"]`);
-    if (cell) {
-      cell.style.backgroundColor = rgbToHex(state.r, state.g, state.b);
-    }
+    if (cell) cell.style.backgroundColor = rgbToHex(state.r, state.g, state.b);
     if (state.modeId !== 999) applyModeSelection(999, false);
     if (state.graffitiLiveSend) {
       bleQueue.enqueueSteps(Commands.graffitiPixel(index, state.r, state.g, state.b, {
-        isSingle: true,
-        mode: state.graffitiMode,
-        speed: state.graffitiSpeed,
-        brightness: state.brightness
+        isSingle: true, mode: state.graffitiMode, speed: state.graffitiSpeed, brightness: state.brightness
       }));
     }
   }
@@ -952,17 +1180,10 @@
 
     grid.querySelectorAll('.pixel-cell').forEach(cell => {
       const idx = Number(cell.dataset.px);
-      cell.addEventListener('pointerdown', e => {
-        e.preventDefault();
-        isPaintingPixels = true;
-        paintPixelAt(idx);
-      });
-      cell.addEventListener('pointerenter', () => {
-        if (isPaintingPixels) paintPixelAt(idx);
-      });
+      cell.addEventListener('pointerdown', e => { e.preventDefault(); isPaintingPixels = true; paintPixelAt(idx); });
+      cell.addEventListener('pointerenter', () => { if (isPaintingPixels) paintPixelAt(idx); });
     });
   }
-
   window.addEventListener('pointerup', () => { isPaintingPixels = false; });
 
   // 60 FPS Strip Canvas Preview
@@ -999,13 +1220,13 @@
   function startLedCanvasAnimation() {
     function render(nowMs) {
       ledCtx.clearRect(0, 0, ledW, ledH);
-      ledCtx.fillStyle = '#06080d';
+      ledCtx.fillStyle = '#04060a';
       ledCtx.fillRect(0, 0, ledW, ledH);
 
-      const displayLeds = Math.max(12, Math.min(64, state.ledCount));
-      const padX = 14;
+      const displayLeds = Math.max(14, Math.min(64, state.ledCount));
+      const padX = 16;
       const step = (ledW - padX * 2) / displayLeds;
-      const ledR = Math.max(3, Math.min(8, step * 0.36));
+      const ledR = Math.max(3, Math.min(7.5, step * 0.35));
       const cy = ledH / 2;
       const speedFactor = 0.25 + (state.speed / 100) * 2.8;
       const dir = state.reverse ? -1 : 1;
@@ -1018,7 +1239,7 @@
         let r = state.r, g = state.g, b = state.b;
 
         if (!state.isOn || state.brightness === 0) {
-          r = 25; g = 32; b = 46;
+          r = 22; g = 28; b = 42;
         } else if (state.modeId === 999) {
           const pxIdx = Math.min(state.pixels.length - 1, Math.floor((i / displayLeds) * state.pixels.length));
           const px = state.pixels[pxIdx] || { r: 0, g: 0, b: 0, mode: 2 };
@@ -1054,9 +1275,9 @@
         }
 
         if (state.isOn && state.brightness > 0 && (r + g + b) > 10) {
-          const glowR = ledR * 2.4;
+          const glowR = ledR * 2.6;
           const grad = ledCtx.createRadialGradient(cx, cy, ledR * 0.2, cx, cy, glowR);
-          grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.65)`);
+          grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.72)`);
           grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
           ledCtx.fillStyle = grad;
           ledCtx.beginPath();
@@ -1074,7 +1295,7 @@
     requestAnimationFrame(render);
   }
 
-  // Diagnostic & Packet Console
+  // Diagnostic Log
   function logDiagnostic(message, isWarn = false) {
     appendPacketLog({ dir: isWarn ? 'WARN' : 'DIAG', label: isWarn ? 'ВНИМАНИЕ' : 'INFO', desc: message });
   }
@@ -1102,13 +1323,13 @@
   function renderPacketLogs() {
     const list = document.getElementById('packetLogList');
     if (state.packetLogs.length === 0) {
-      list.innerHTML = '<div class="text-slate-500 text-center py-8">Консоль готова. Нажмите «Подключить ленту» или «Демо».</div>';
+      list.innerHTML = '<div class="text-slate-500 text-center py-8">Журнал пуст. Нажмите «Подключить».</div>';
       return;
     }
     list.innerHTML = state.packetLogs.map(item => {
       if (item.dir === 'DIAG' || item.dir === 'WARN') {
         const badge = item.dir === 'WARN' ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-500/20 text-indigo-300';
-        return `<div class="p-2 rounded-lg bg-surface-900/75 border border-white/5 space-y-0.5">
+        return `<div class="p-2 rounded-xl bg-white/[0.03] border border-white/5 space-y-0.5">
           <div class="flex items-center gap-1.5"><span class="text-slate-500">${item.time}</span><span class="px-1.5 py-0.5 rounded font-semibold ${badge}">${item.label}</span></div>
           <div class="text-[11px] text-slate-300 break-words">${item.desc}</div>
         </div>`;
@@ -1116,12 +1337,8 @@
       const dirBadge = item.dir === 'TX'
         ? `<span class="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-semibold">TX → ${item.charTag}</span>`
         : `<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold">RX ← ${item.charTag}</span>`;
-      const demoBadge = item.isDemo ? '<span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 text-[10px]">ДЕМО</span>' : '';
-      return `<div class="p-2 rounded-lg bg-surface-900/90 border border-white/5 space-y-1">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div class="flex items-center gap-1.5"><span class="text-slate-500">${item.time}</span>${dirBadge}<span class="text-white font-semibold">${item.label}</span><span class="text-slate-400">(${item.desc})</span></div>
-          ${demoBadge}
-        </div>
+      return `<div class="p-2 rounded-xl bg-white/[0.03] border border-white/5 space-y-1">
+        <div class="flex flex-wrap items-center gap-1.5"><span class="text-slate-500">${item.time}</span>${dirBadge}<span class="text-white font-semibold">${item.label}</span><span class="text-slate-400">(${item.desc})</span></div>
         <div class="grid grid-cols-1 gap-0.5 text-[10px] sm:text-[11px] break-all">
           <div><span class="text-slate-500">RAW: </span><span class="text-slate-300">${item.rawHex}</span></div>
           <div><span class="text-slate-500">AES: </span><span class="text-emerald-400">${item.encHex}</span></div>
@@ -1134,11 +1351,11 @@
     const container = document.getElementById('toastContainer');
     const toast = document.createElement('div');
     const styles = {
-      success: 'bg-surface-850 border-emerald-500/40 text-emerald-200',
-      error:   'bg-surface-850 border-rose-500/40 text-rose-200',
-      info:    'bg-surface-850 border-sky-500/40 text-slate-200'
+      success: 'bg-surface-900/95 border-emerald-400/40 text-emerald-200',
+      error:   'bg-surface-900/95 border-rose-400/40 text-rose-200',
+      info:    'bg-surface-900/95 border-sky-400/40 text-slate-100'
     };
-    toast.className = `pointer-events-auto px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-xl text-xs font-medium transition-all duration-300 translate-y-2 opacity-0 ${styles[type] || styles.info}`;
+    toast.className = `pointer-events-auto px-4 py-3 rounded-2xl border shadow-2xl backdrop-blur-xl text-xs font-medium transition-all duration-300 translate-y-2 opacity-0 ${styles[type] || styles.info}`;
     toast.textContent = message;
     container.appendChild(toast);
     requestAnimationFrame(() => toast.classList.remove('translate-y-2', 'opacity-0'));
@@ -1148,44 +1365,54 @@
     }, 3000);
   }
 
-  // Mobile Tab switching
   function switchTab(tabName) {
     document.querySelectorAll('.tab-btn').forEach(btn => {
       const active = btn.dataset.tab === tabName;
       btn.className = active
-        ? 'tab-btn flex-1 py-2 px-3 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-500/40 text-xs font-semibold transition cursor-pointer'
-        : 'tab-btn flex-1 py-2 px-3 rounded-xl bg-surface-800/70 text-slate-400 border border-white/5 text-xs font-medium hover:text-white transition cursor-pointer';
+        ? 'tab-btn btn-tactile flex-1 min-w-[84px] py-2.5 px-3 rounded-xl bg-gradient-to-r from-sky-500/25 to-indigo-500/25 text-white border border-sky-400/40 shadow-lg shadow-sky-500/10 text-xs font-semibold cursor-pointer whitespace-nowrap'
+        : 'tab-btn btn-tactile flex-1 min-w-[84px] py-2.5 px-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 border border-transparent text-xs font-medium cursor-pointer whitespace-nowrap';
     });
     document.querySelectorAll('.tab-panel').forEach(panel => {
       if (panel.dataset.panel === tabName) panel.classList.remove('hidden');
       else panel.classList.add('hidden');
     });
-    if (tabName === 'color') setTimeout(resizeAndDrawColorWheel, 10);
+    if (tabName === 'color') setTimeout(resizeAndDrawColorWheel, 15);
   }
 
-  // Init
+  // Event Listeners
   function initEventListeners() {
     document.getElementById('btnCloseErrorBanner').addEventListener('click', () => document.getElementById('globalErrorBanner').classList.add('hidden'));
     document.getElementById('btnConnectAll').addEventListener('click', () => connectBle(false));
     document.getElementById('btnConnectIsp').addEventListener('click', () => connectBle(true));
     document.getElementById('btnDisconnect').addEventListener('click', disconnectBle);
-    document.getElementById('btnOpenLogsQuick')?.addEventListener('click', () => switchTab('settings'));
+    document.getElementById('btnOpenLogsQuick').addEventListener('click', () => switchTab('settings'));
+
+    const modal = document.getElementById('homeGuideModal');
+    document.getElementById('btnOpenHomeGuide').addEventListener('click', () => modal.classList.remove('hidden'));
+    document.getElementById('btnCloseHomeGuide').addEventListener('click', () => modal.classList.add('hidden'));
+    modal.addEventListener('click', e => { if (e.target === modal) modal.classList.add('hidden'); });
+
+    document.getElementById('btnCopyBluefyUrl').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText('bluefy://open?url=https://led.mriamys.site');
+        showToast('Ссылка для Bluefy скопирована', 'success');
+      } catch {
+        showToast('Скопируйте ссылку вручную', 'error');
+      }
+    });
+
+    document.getElementById('btnCopySiteUrl')?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText('https://led.mriamys.site');
+        showToast('Адрес сайта скопирован', 'success');
+      } catch {}
+    });
+
     document.getElementById('btnCancelConnect')?.addEventListener('click', () => {
       connectAttemptId++;
       if (state.bleDevice?.gatt?.connected) state.bleDevice.gatt.disconnect();
       logDiagnostic('Подключение сброшено пользователем', true);
-      updateConnectionStatus(state.isDemoMode ? 'demo' : 'disconnected');
-    });
-
-    const demoToggle = document.getElementById('demoModeToggle');
-    demoToggle.addEventListener('change', () => {
-      state.isDemoMode = demoToggle.checked;
-      if (!state.isConnected) updateConnectionStatus(state.isDemoMode ? 'demo' : 'disconnected');
-      showToast(state.isDemoMode ? 'Демо-режим включён' : 'Демо-режим выключен', 'info');
-    });
-    document.getElementById('btnEnableDemoFromBanner').addEventListener('click', () => {
-      demoToggle.checked = true;
-      demoToggle.dispatchEvent(new Event('change'));
+      updateConnectionStatus('disconnected');
     });
 
     document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
@@ -1225,7 +1452,7 @@
 
     document.getElementById('btnSaveFavorite').addEventListener('click', () => {
       const hex = rgbToHex(state.r, state.g, state.b);
-      if (state.favorites.some(f => f.hex === hex)) return showToast(`Цвет ${hex} уже в избранном`);
+      if (state.favorites.some(f => f.hex === hex)) return showToast(`Цвет ${hex} уже сохранён`);
       state.favorites.unshift({ hex, r: state.r, g: state.g, b: state.b });
       if (state.favorites.length > 16) state.favorites.pop();
       saveFavorites(); renderFavorites();
@@ -1268,7 +1495,107 @@
       }
     }));
 
-    // Graffiti & Bulk Paint
+    // Random & Scheduler
+    const syncIntervalInputs = () => {
+      const valEl = document.getElementById('randomIntervalValue');
+      const unitEl = document.getElementById('randomIntervalUnit');
+      if (state.randomIntervalSec >= 60 && state.randomIntervalSec % 60 === 0) {
+        unitEl.value = 'min';
+        valEl.value = state.randomIntervalSec / 60;
+      } else {
+        unitEl.value = 'sec';
+        valEl.value = state.randomIntervalSec;
+      }
+    };
+
+    const updateIntervalFromInputs = () => {
+      const v = Math.max(1, Number(document.getElementById('randomIntervalValue').value) || 30);
+      const u = document.getElementById('randomIntervalUnit').value;
+      state.randomIntervalSec = Math.max(3, u === 'min' ? v * 60 : v);
+      state.randomNextSwitchAt = state.randomEnabled ? Date.now() + state.randomIntervalSec * 1000 : 0;
+      saveAutomationConfig();
+    };
+
+    document.getElementById('randomEnabledToggle').addEventListener('change', e => {
+      state.randomEnabled = e.target.checked;
+      saveAutomationConfig();
+      if (state.randomEnabled) {
+        state.randomNextSwitchAt = Date.now() + state.randomIntervalSec * 1000;
+        triggerRandomStep(false);
+        showToast(`Рандом включён (каждые ${state.randomIntervalSec} сек)`, 'success');
+      } else {
+        showToast('Рандом выключен', 'info');
+      }
+      runAutomationTick();
+    });
+
+    document.getElementById('btnRandomNextNow').addEventListener('click', () => triggerRandomStep(true));
+
+    document.querySelectorAll('.random-interval-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        state.randomIntervalSec = Number(b.dataset.sec);
+        syncIntervalInputs();
+        state.randomNextSwitchAt = state.randomEnabled ? Date.now() + state.randomIntervalSec * 1000 : 0;
+        saveAutomationConfig();
+        runAutomationTick();
+        showToast(`Интервал: ${b.textContent.trim()}`, 'info');
+      });
+    });
+
+    document.getElementById('randomIntervalValue').addEventListener('change', updateIntervalFromInputs);
+    document.getElementById('randomIntervalUnit').addEventListener('change', updateIntervalFromInputs);
+    document.getElementById('randomKindSelect').addEventListener('change', e => {
+      state.randomKind = e.target.value;
+      saveAutomationConfig();
+    });
+    document.getElementById('randomSpeedReverseToggle').addEventListener('change', e => {
+      state.randomSpeedReverse = e.target.checked;
+      saveAutomationConfig();
+    });
+
+    document.getElementById('schedOnEnabled').addEventListener('change', e => {
+      state.schedOnEnabled = e.target.checked;
+      saveAutomationConfig();
+      runAutomationTick();
+    });
+    document.getElementById('schedOnTime').addEventListener('change', e => {
+      state.schedOnTime = e.target.value || '09:00';
+      state.lastTriggeredOnMinute = '';
+      saveAutomationConfig();
+      runAutomationTick();
+    });
+    document.getElementById('schedOnAction').addEventListener('change', e => {
+      state.schedOnAction = e.target.value;
+      saveAutomationConfig();
+    });
+    document.getElementById('schedOffEnabled').addEventListener('change', e => {
+      state.schedOffEnabled = e.target.checked;
+      saveAutomationConfig();
+      runAutomationTick();
+    });
+    document.getElementById('schedOffTime').addEventListener('change', e => {
+      state.schedOffTime = e.target.value || '21:00';
+      state.lastTriggeredOffMinute = '';
+      saveAutomationConfig();
+      runAutomationTick();
+    });
+
+    document.querySelectorAll('.sleep-preset-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        const mins = Number(b.dataset.min);
+        state.sleepOffAt = Date.now() + mins * 60 * 1000;
+        runAutomationTick();
+        showToast(`Лента выключится через ${mins} мин`, 'success');
+      });
+    });
+    document.getElementById('sleepCancelBtn').addEventListener('click', () => {
+      state.sleepOffAt = 0;
+      runAutomationTick();
+      showToast('Таймер сна отменён', 'info');
+    });
+    document.getElementById('wakeLockToggle').addEventListener('change', e => setWakeLock(e.target.checked));
+
+    // Graffiti
     document.getElementById('graffitiModeSelect').addEventListener('change', e => { state.graffitiMode = Number(e.target.value); });
     document.getElementById('graffitiSpeedSlider').addEventListener('input', e => {
       state.graffitiSpeed = Number(e.target.value);
@@ -1292,7 +1619,7 @@
       }
       renderGraffitiGrid();
       applyModeSelection(999, false);
-      showToast('Радуга нарисована — нажмите «Отправить Bulk (DOOT)»', 'info');
+      showToast('Радуга нарисована — нажмите «Применить весь рисунок»', 'info');
     });
     document.getElementById('btnGraffitiClear').addEventListener('click', () => {
       state.pixels.forEach(p => { p.r = 0; p.g = 0; p.b = 0; });
@@ -1306,10 +1633,10 @@
       applyModeSelection(999, false);
       const steps = Commands.bulkPaint(state.pixels, { fiveBitSafe: state.fiveBitSafe, brightness: state.brightness });
       bleQueue.enqueueSteps(steps, 'BULK');
-      showToast(`Отправка ${steps.length} пакетов коллекции...`, 'success');
+      showToast(`Отправка рисунка (${steps.length} пакетов)...`, 'success');
     });
 
-    // Hardware Settings
+    // Settings
     document.getElementById('protocolSelect').addEventListener('change', e => {
       state.protocolMode = e.target.value;
       updateProtocolBadge();
@@ -1324,26 +1651,27 @@
       const val = Number(b.dataset.order);
       state.rgbOrder = val;
       document.getElementById('rgbOrderBadge').textContent = `${val}: ${RGB_ORDERS[val]}`;
-      document.getElementById('telemetryOrder').textContent = RGB_ORDERS[val];
       bleQueue.enqueueSteps(Commands.legacyRgbOrder(val), 'RGB');
     }));
 
     document.getElementById('btnClearLog').addEventListener('click', () => {
       state.packetLogs = [];
       document.getElementById('packetCounterBadge').textContent = '0';
+      document.getElementById('headerLogCount').textContent = '0';
       renderPacketLogs();
     });
     document.getElementById('btnCopyLog').addEventListener('click', async () => {
-      if (state.packetLogs.length === 0) return showToast('Лог пуст');
+      if (state.packetLogs.length === 0) return showToast('Журнал пуст');
       const txt = state.packetLogs.map(p => p.rawHex
         ? `[${p.time}] ${p.dir} ${p.label} (${p.desc}) | RAW: ${p.rawHex} | AES: ${p.encHex}`
         : `[${p.time}] ${p.dir} ${p.label}: ${p.desc}`
       ).join('\n');
-      try { await navigator.clipboard.writeText(txt); showToast('Лог скопирован', 'success'); }
-      catch { showToast('Скопируйте вручную из консоли', 'error'); }
+      try { await navigator.clipboard.writeText(txt); showToast('Журнал скопирован', 'success'); }
+      catch { showToast('Скопируйте вручную из окна журнала', 'error'); }
     });
 
     window.addEventListener('resize', () => { resizeLedCanvas(); resizeAndDrawColorWheel(); });
+    syncIntervalInputs();
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -1356,20 +1684,31 @@
     if (aesRes.ok) {
       badge.textContent = 'AES-128-ECB: OK';
       badge.className = 'text-emerald-400';
-      logDiagnostic(`AES-128-ECB проверен (TURN=01 → ${aesRes.encHex.slice(0, 23)}...)`);
     } else {
       badge.textContent = 'AES-128-ECB: ERR';
       badge.className = 'text-rose-400';
-      showGlobalError('Ошибка самопроверки AES-128-ECB');
+      showGlobalError('Ошибка шифрования AES-128-ECB');
     }
 
+    loadAutomationConfig();
     initPixelsArray(state.ledCount);
     renderPresetColors();
     renderModesGrid();
     renderEffectPalette();
+    renderRandomEffectPool();
     renderGraffitiGrid();
     loadFavorites();
     initEventListeners();
+
+    // Hydrate Automation UI
+    document.getElementById('randomEnabledToggle').checked = state.randomEnabled;
+    document.getElementById('randomKindSelect').value = state.randomKind;
+    document.getElementById('randomSpeedReverseToggle').checked = state.randomSpeedReverse;
+    document.getElementById('schedOnEnabled').checked = state.schedOnEnabled;
+    document.getElementById('schedOnTime').value = state.schedOnTime;
+    document.getElementById('schedOnAction').value = state.schedOnAction;
+    document.getElementById('schedOffEnabled').checked = state.schedOffEnabled;
+    document.getElementById('schedOffTime').value = state.schedOffTime;
 
     applyPowerChange(true, false);
     applyColorChange(0, 212, 255, true, false);
@@ -1381,5 +1720,8 @@
     resizeLedCanvas();
     resizeAndDrawColorWheel();
     startLedCanvasAnimation();
+
+    setInterval(runAutomationTick, 1000);
+    runAutomationTick();
   });
 })();
