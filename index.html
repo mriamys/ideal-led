@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c1018" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <title>idealLED — BLE Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          },
+          colors: {
+            surface: {
+              950: '#07090e',
+              900: '#0c1018',
+              850: '#111622',
+              800: '#161d2c',
+              700: '#1e273b'
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    :root { --accent-r: 0; --accent-g: 212; --accent-b: 255; }
+    body { background-color: #07090e; color: #f1f5f9; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+    .ambient-glow {
+      background: radial-gradient(circle at 50% -10%, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.17) 0%, rgba(12, 16, 24, 0) 65%);
+      transition: background 0.35s ease;
+    }
+    input[type="range"].led-slider { -webkit-appearance: none; appearance: none; height: 10px; border-radius: 9999px; outline: none; cursor: pointer; }
+    input[type="range"].led-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 9999px;
+      background: #fff; border: 3px solid #0f172a; box-shadow: 0 2px 8px rgba(0,0,0,0.55), 0 0 0 2px rgba(255,255,255,0.25); cursor: grab;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.4); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 9999px; }
+  </style>
+</head>
+<body class="min-h-screen font-sans antialiased selection:bg-sky-500/30 selection:text-sky-200">
+  <div id="globalErrorBanner" class="hidden sticky top-0 z-50 bg-rose-600 text-white px-4 py-3 shadow-2xl border-b border-rose-400">
+    <div class="max-w-7xl mx-auto flex items-start justify-between gap-3">
+      <div class="text-xs font-mono break-all">
+        <strong class="uppercase tracking-wider block mb-0.5">Ошибка JavaScript:</strong>
+        <span id="globalErrorText"></span>
+      </div>
+      <button id="btnCloseErrorBanner" type="button" class="px-2.5 py-1 rounded-lg bg-rose-800 hover:bg-rose-900 text-xs font-semibold shrink-0 cursor-pointer">Закрыть</button>
+    </div>
+  </div>
+
+  <div class="fixed inset-0 pointer-events-none ambient-glow z-0"></div>
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-[calc(100vw-2rem)] pointer-events-none"></div>
+
+  <div class="relative z-10 flex flex-col min-h-screen">
+    <!-- Header -->
+    <header class="sticky top-0 z-30 border-b border-white/10 bg-surface-900/85 backdrop-blur-xl">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <img src="/icon.svg" alt="idealLED" class="w-10 h-10 rounded-xl shadow-lg shadow-sky-500/20" />
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white">idealLED</h1>
+              <span class="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30">BLE STUDIO</span>
+            </div>
+            <p class="text-[11px] text-slate-400" id="protocolBadge">Протокол: TYPE2</p>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-800/95 border border-white/10 text-xs font-medium text-slate-300">
+            <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+            <span id="statusText">Отключено</span>
+          </div>
+
+          <label class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-800/85 hover:bg-surface-800 border border-white/10 cursor-pointer select-none transition">
+            <input id="demoModeToggle" type="checkbox" class="sr-only peer" />
+            <div class="w-8 h-4.5 bg-slate-700 rounded-full relative transition peer-checked:bg-amber-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:w-3.5 after:h-3.5 after:rounded-full after:transition-all peer-checked:after:translate-x-3.5"></div>
+            <span class="text-xs font-medium text-slate-200">Демо</span>
+          </label>
+
+          <div id="connectButtonsGroup" class="flex items-center gap-2">
+            <button id="btnConnectIsp" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 active:scale-[0.98] text-slate-950 font-semibold text-xs sm:text-sm shadow-lg shadow-sky-500/20 transition cursor-pointer">
+              <span>Подключить ISP/IDL</span>
+            </button>
+            <button id="btnConnectAll" type="button" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface-800 hover:bg-surface-700 text-slate-200 font-medium text-xs sm:text-sm border border-white/10 transition cursor-pointer">
+              <span>Все BLE</span>
+            </button>
+          </div>
+
+          <button id="btnDisconnect" type="button" class="hidden inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 font-medium text-xs sm:text-sm transition cursor-pointer">
+            <span>Отключить</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- iPhone / Non-WebBLE Banner -->
+    <div id="unsupportedBanner" class="hidden max-w-7xl mx-auto w-full px-4 sm:px-6 pt-4">
+      <div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div>
+          <h2 class="text-sm font-semibold text-amber-200">Web Bluetooth недоступен в этом браузере</h2>
+          <p class="text-xs text-amber-200/80 mt-0.5">
+            На iPhone откройте этот адрес в бесплатном приложении <strong>Bluefy</strong> из App Store (Safari блокирует Bluetooth). На ПК/Android используйте Chrome или Edge.
+          </p>
+        </div>
+        <button id="btnEnableDemoFromBanner" type="button" class="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs shrink-0 cursor-pointer">Включить Демо</button>
+      </div>
+    </div>
+
+    <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5 space-y-4">
+      <!-- Live 60 FPS Strip Preview -->
+      <section class="rounded-2xl bg-surface-900/90 border border-white/10 p-4 shadow-xl backdrop-blur-md">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
+            <h2 class="text-sm font-semibold text-slate-200">Живая лента (60 FPS)</h2>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5 text-[11px] font-mono">
+            <span id="telemetryMode" class="px-2 py-0.5 rounded-lg bg-surface-800 border border-white/5 text-slate-300">Режим: Статичный</span>
+            <span id="telemetryBrightness" class="px-2 py-0.5 rounded-lg bg-surface-800 border border-white/5 text-slate-300">Яркость: 80%</span>
+            <span id="telemetrySpeed" class="px-2 py-0.5 rounded-lg bg-surface-800 border border-white/5 text-slate-300">Скорость: 50%</span>
+            <span id="telemetryLeds" class="px-2 py-0.5 rounded-lg bg-surface-800 border border-white/5 text-slate-300">LED: 60</span>
+            <span id="telemetryOrder" class="px-2 py-0.5 rounded-lg bg-surface-800 border border-white/5 text-slate-300">RGB</span>
+          </div>
+        </div>
+        <div id="ledCanvasWrapper" class="relative w-full h-14 rounded-2xl bg-surface-950 border border-white/10 overflow-hidden shadow-inner">
+          <canvas id="ledStripCanvas" class="w-full h-full block"></canvas>
+        </div>
+      </section>
+
+      <!-- Power + Brightness Bar -->
+      <section class="rounded-2xl bg-surface-900/90 border border-white/10 p-4 shadow-xl backdrop-blur-md space-y-4">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <h2 class="text-base font-semibold text-white">Питание и яркость</h2>
+            <p id="powerSubtitle" class="text-xs text-emerald-400 mt-0.5">Лента включена</p>
+          </div>
+          <button id="btnPower" type="button" aria-pressed="true" class="inline-flex items-center gap-2.5 px-5 py-3 rounded-2xl font-semibold text-sm transition cursor-pointer bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+            <span id="btnPowerLabel">ВКЛ</span>
+          </button>
+        </div>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label for="brightnessSlider" class="text-xs font-medium text-slate-300">Яркость</label>
+            <span id="brightnessValueLabel" class="text-xs font-mono font-semibold px-2 py-0.5 rounded-md bg-surface-800 text-white border border-white/10">80%</span>
+          </div>
+          <input id="brightnessSlider" type="range" min="0" max="100" value="80" class="w-full led-slider bg-surface-800" />
+          <div class="grid grid-cols-5 gap-1.5">
+            <button type="button" data-brightness="10" class="brightness-preset py-1.5 rounded-xl bg-surface-800 hover:bg-surface-700 text-xs font-mono text-slate-300 border border-white/5 cursor-pointer">10%</button>
+            <button type="button" data-brightness="25" class="brightness-preset py-1.5 rounded-xl bg-surface-800 hover:bg-surface-700 text-xs font-mono text-slate-300 border border-white/5 cursor-pointer">25%</button>
+            <button type="button" data-brightness="50" class="brightness-preset py-1.5 rounded-xl bg-surface-800 hover:bg-surface-700 text-xs font-mono text-slate-300 border border-white/5 cursor-pointer">50%</button>
+            <button type="button" data-brightness="75" class="brightness-preset py-1.5 rounded-xl bg-surface-800 hover:bg-surface-700 text-xs font-mono text-slate-300 border border-white/5 cursor-pointer">75%</button>
+            <button type="button" data-brightness="100" class="brightness-preset py-1.5 rounded-xl bg-surface-800 hover:bg-surface-700 text-xs font-mono text-slate-300 border border-white/5 cursor-pointer">100%</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Navigation Tabs (Mobile-friendly) -->
+      <nav class="flex gap-2 overflow-x-auto pb-1">
+        <button type="button" data-tab="color" class="tab-btn flex-1 py-2 px-3 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-500/40 text-xs font-semibold transition cursor-pointer">Цвет</button>
+        <button type="button" data-tab="effects" class="tab-btn flex-1 py-2 px-3 rounded-xl bg-surface-800/70 text-slate-400 border border-white/5 text-xs font-medium hover:text-white transition cursor-pointer">Эффекты</button>
+        <button type="button" data-tab="graffiti" class="tab-btn flex-1 py-2 px-3 rounded-xl bg-surface-800/70 text-slate-400 border border-white/5 text-xs font-medium hover:text-white transition cursor-pointer">Граффити / Bulk</button>
+        <button type="button" data-tab="settings" class="tab-btn flex-1 py-2 px-3 rounded-xl bg-surface-800/70 text-slate-400 border border-white/5 text-xs font-medium hover:text-white transition cursor-pointer">Настройки и Лог</button>
+      </nav>
+
+      <!-- TAB 1: COLOR -->
+      <section data-panel="color" class="tab-panel rounded-2xl bg-surface-900/90 border border-white/10 p-4 sm:p-5 shadow-xl backdrop-blur-md space-y-5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-semibold text-white">Палитра цвета (SGLS / COLO)</h2>
+          <div class="flex items-center gap-2">
+            <span id="activeColorSwatch" class="w-6 h-6 rounded-lg border border-white/25" style="background-color: #00d4ff;"></span>
+            <span id="activeRgbText" class="text-xs font-mono text-slate-400">0, 212, 255</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div class="lg:col-span-5 flex flex-col items-center">
+            <div id="wheelWrapper" class="relative w-60 h-60 sm:w-64 sm:h-64 select-none" style="touch-action: none;">
+              <canvas id="colorWheelCanvas" class="w-full h-full block cursor-crosshair" style="touch-action: none;"></canvas>
+            </div>
+          </div>
+
+          <div class="lg:col-span-7 space-y-4">
+            <div class="flex items-center gap-2">
+              <div class="relative flex-1">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono text-slate-400">HEX</span>
+                <input id="hexInput" type="text" maxlength="7" value="#00D4FF" spellcheck="false" class="w-full pl-11 pr-3 py-2 rounded-xl bg-surface-950 border border-white/10 focus:border-sky-500 focus:outline-none text-sm font-mono text-white uppercase" />
+              </div>
+              <button id="btnSaveFavorite" type="button" class="px-3.5 py-2.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-xs font-medium cursor-pointer">+ В избранное</button>
+            </div>
+
+            <div class="space-y-3">
+              <div class="flex items-center gap-3">
+                <span class="w-4 text-xs font-mono font-bold text-rose-400">R</span>
+                <input id="sliderR" type="range" min="0" max="255" value="0" class="flex-1 led-slider" style="background: linear-gradient(to right, #090d16, #ef4444);" />
+                <input id="numR" type="number" min="0" max="255" value="0" class="w-14 px-2 py-1 rounded-lg bg-surface-950 border border-white/10 text-xs font-mono text-center text-white" />
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="w-4 text-xs font-mono font-bold text-emerald-400">G</span>
+                <input id="sliderG" type="range" min="0" max="255" value="212" class="flex-1 led-slider" style="background: linear-gradient(to right, #090d16, #10b981);" />
+                <input id="numG" type="number" min="0" max="255" value="212" class="w-14 px-2 py-1 rounded-lg bg-surface-950 border border-white/10 text-xs font-mono text-center text-white" />
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="w-4 text-xs font-mono font-bold text-sky-400">B</span>
+                <input id="sliderB" type="range" min="0" max="255" value="255" class="flex-1 led-slider" style="background: linear-gradient(to right, #090d16, #3b82f6);" />
+                <input id="numB" type="number" min="0" max="255" value="255" class="w-14 px-2 py-1 rounded-lg bg-surface-950 border border-white/10 text-xs font-mono text-center text-white" />
+              </div>
+            </div>
+
+            <!-- 5-bit safe & Dual color from 8none1/idealLED -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              <label class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-surface-950/80 border border-white/10 cursor-pointer">
+                <div>
+                  <span class="text-xs font-medium text-slate-200 block">5-bit защита (>> 3)</span>
+                  <span class="text-[10px] text-slate-500">Защита регулятора питания</span>
+                </div>
+                <input id="fiveBitToggle" type="checkbox" checked class="w-4 h-4 accent-sky-500" />
+              </label>
+
+              <div class="p-2.5 rounded-xl bg-surface-950/80 border border-white/10 space-y-1.5">
+                <label class="flex items-center justify-between gap-2 cursor-pointer">
+                  <span class="text-xs font-medium text-slate-200">2-й цвет (SGLS фон)</span>
+                  <input id="dualColorToggle" type="checkbox" class="w-4 h-4 accent-sky-500" />
+                </label>
+                <div id="dualColorWrap" class="hidden flex items-center gap-2">
+                  <input id="dualColorPicker" type="color" value="#9D00FF" class="w-8 h-6 rounded bg-transparent border-0 cursor-pointer" />
+                  <span class="text-[11px] text-slate-400">Вторичный оттенок</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-2 pt-2 border-t border-white/5">
+              <span class="text-xs font-medium text-slate-400 block">Быстрые цвета</span>
+              <div id="presetColorsGrid" class="grid grid-cols-5 gap-2"></div>
+            </div>
+
+            <div class="space-y-2 pt-2 border-t border-white/5">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-medium text-slate-400">Избранные цвета</span>
+                <span id="favoritesCount" class="text-[11px] font-mono text-slate-500">0</span>
+              </div>
+              <div id="favoriteColorsGrid" class="flex flex-wrap gap-2 min-h-[34px] items-center"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: EFFECTS -->
+      <section data-panel="effects" class="tab-panel hidden rounded-2xl bg-surface-900/90 border border-white/10 p-4 sm:p-5 shadow-xl backdrop-blur-md space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-base font-semibold text-white">Эффекты и мульти-палитра (MULT)</h2>
+            <p class="text-xs text-slate-400">Эффекты 1–10 с защитным лимитом (&le; 11 по протоколу 8none1/idealLED)</p>
+          </div>
+          <span id="activeModeBadge" class="px-2.5 py-1 rounded-xl bg-sky-500/15 border border-sky-500/30 text-xs font-medium text-sky-300">Статичный</span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="p-3.5 rounded-xl bg-surface-950/80 border border-white/5 space-y-2">
+            <div class="flex items-center justify-between">
+              <label for="speedSlider" class="text-xs font-medium text-slate-300">Скорость эффектов</label>
+              <span id="speedValueLabel" class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-surface-800 text-white">50%</span>
+            </div>
+            <input id="speedSlider" type="range" min="1" max="100" value="50" class="w-full led-slider bg-surface-800" />
+          </div>
+
+          <label class="p-3.5 rounded-xl bg-surface-950/80 border border-white/5 flex items-center justify-between cursor-pointer">
+            <div>
+              <span class="text-xs font-medium text-slate-200 block">Реверс направления</span>
+              <span class="text-[11px] text-slate-500">Инвертирует движение эффекта</span>
+            </div>
+            <input id="reverseToggle" type="checkbox" class="w-5 h-5 accent-sky-500" />
+          </label>
+        </div>
+
+        <div id="modesGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5"></div>
+
+        <!-- Custom 7-color palette for 960a -->
+        <div class="p-4 rounded-xl bg-surface-950/80 border border-white/10 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 class="text-xs font-semibold text-white">Палитра эффекта (до 7 цветов → характеристика 960a)</h3>
+              <p class="text-[11px] text-slate-500">Отправляется на контроллер сразу после команды MULT</p>
+            </div>
+            <button id="btnAddPaletteColor" type="button" class="px-3 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 text-xs font-medium cursor-pointer">+ Добавить цвет</button>
+          </div>
+          <div id="effectPaletteList" class="flex flex-wrap gap-2"></div>
+          <div class="flex flex-wrap gap-1.5 pt-1">
+            <button type="button" data-preset="rainbow" class="palette-preset-btn px-2.5 py-1 rounded-lg bg-surface-800 hover:bg-surface-700 text-[11px] text-slate-300 border border-white/10 cursor-pointer">Радуга</button>
+            <button type="button" data-preset="fire" class="palette-preset-btn px-2.5 py-1 rounded-lg bg-surface-800 hover:bg-surface-700 text-[11px] text-slate-300 border border-white/10 cursor-pointer">Огонь</button>
+            <button type="button" data-preset="ocean" class="palette-preset-btn px-2.5 py-1 rounded-lg bg-surface-800 hover:bg-surface-700 text-[11px] text-slate-300 border border-white/10 cursor-pointer">Океан</button>
+            <button type="button" data-preset="cyberpunk" class="palette-preset-btn px-2.5 py-1 rounded-lg bg-surface-800 hover:bg-surface-700 text-[11px] text-slate-300 border border-white/10 cursor-pointer">Киберпанк</button>
+            <button type="button" data-preset="xmas" class="palette-preset-btn px-2.5 py-1 rounded-lg bg-surface-800 hover:bg-surface-700 text-[11px] text-slate-300 border border-white/10 cursor-pointer">Праздник</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: GRAFFITI / BULK PAINT -->
+      <section data-panel="graffiti" class="tab-panel hidden rounded-2xl bg-surface-900/90 border border-white/10 p-4 sm:p-5 shadow-xl backdrop-blur-md space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-semibold text-white">Граффити и коллекции (DOOD / DOOT)</h2>
+            <p class="text-xs text-slate-400">Нажимайте или проводите пальцем по диодам, чтобы покрасить каждый пиксель отдельно</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-400">Кисть:</span>
+            <span id="graffitiBrushPreview" class="w-6 h-6 rounded-lg border border-white/30" style="background-color: #00d4ff;"></span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-xl bg-surface-950/80 border border-white/10">
+          <div>
+            <label for="graffitiModeSelect" class="text-[11px] text-slate-400 block mb-1">Режим пикселя</label>
+            <select id="graffitiModeSelect" class="w-full px-3 py-2 rounded-lg bg-surface-900 border border-white/10 text-xs text-white">
+              <option value="2">Solid (статичный)</option>
+              <option value="1">Fade (перелив)</option>
+              <option value="0">Flash (мигание)</option>
+            </select>
+          </div>
+          <div>
+            <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+              <span>Скорость пикселя</span>
+              <span id="graffitiSpeedLabel" class="font-mono text-white">60%</span>
+            </div>
+            <input id="graffitiSpeedSlider" type="range" min="1" max="100" value="60" class="w-full led-slider bg-surface-800 mt-1.5" />
+          </div>
+          <label class="flex items-center justify-between gap-2 cursor-pointer pt-2 sm:pt-0">
+            <div>
+              <span class="text-xs font-medium text-slate-200 block">Отправлять сразу (DOOD)</span>
+              <span class="text-[10px] text-slate-500">Выкл. для рисования перед Bulk</span>
+            </div>
+            <input id="graffitiLiveToggle" type="checkbox" checked class="w-4 h-4 accent-sky-500" />
+          </label>
+        </div>
+
+        <div id="graffitiPixelGrid" class="grid grid-cols-6 sm:grid-cols-10 md:grid-cols-12 gap-1.5 max-h-64 overflow-y-auto p-2 rounded-xl bg-surface-950 border border-white/10"></div>
+
+        <div class="flex flex-wrap gap-2">
+          <button id="btnBulkPaintSend" type="button" class="px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold text-xs cursor-pointer">Отправить Bulk (DOOT)</button>
+          <button id="btnGraffitiFlood" type="button" class="px-3.5 py-2.5 rounded-xl bg-surface-800 hover:bg-surface-700 text-slate-200 border border-white/10 text-xs font-medium cursor-pointer">Залить всё</button>
+          <button id="btnGraffitiRainbow" type="button" class="px-3.5 py-2.5 rounded-xl bg-surface-800 hover:bg-surface-700 text-slate-200 border border-white/10 text-xs font-medium cursor-pointer">Нарисовать радугу</button>
+          <button id="btnGraffitiClear" type="button" class="px-3.5 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-medium cursor-pointer">Очистить всё</button>
+        </div>
+      </section>
+
+      <!-- TAB 4: SETTINGS & CONSOLE -->
+      <section data-panel="settings" class="tab-panel hidden space-y-5">
+        <div class="rounded-2xl bg-surface-900/90 border border-white/10 p-4 sm:p-5 shadow-xl backdrop-blur-md space-y-4">
+          <h2 class="text-base font-semibold text-white">Настройки контроллера и протокола</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="p-3.5 rounded-xl bg-surface-950/80 border border-white/5 space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-medium text-slate-300">Количество диодов (LAMPN)</span>
+                <span id="ledCountBadge" class="text-xs font-mono text-sky-400">60 шт.</span>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <button type="button" data-ledcount="30" class="ledcount-preset px-2.5 py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-xs font-mono text-slate-300 border border-white/5 cursor-pointer">30</button>
+                <button type="button" data-ledcount="60" class="ledcount-preset px-2.5 py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-xs font-mono text-slate-300 border border-white/5 cursor-pointer">60</button>
+                <button type="button" data-ledcount="100" class="ledcount-preset px-2.5 py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-xs font-mono text-slate-300 border border-white/5 cursor-pointer">100</button>
+                <button type="button" data-ledcount="150" class="ledcount-preset px-2.5 py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-xs font-mono text-slate-300 border border-white/5 cursor-pointer">150</button>
+                <button type="button" data-ledcount="300" class="ledcount-preset px-2.5 py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-xs font-mono text-slate-300 border border-white/5 cursor-pointer">300</button>
+              </div>
+              <div class="flex items-center gap-2">
+                <input id="ledCountInput" type="number" min="1" max="1024" value="60" class="flex-1 px-3 py-2 rounded-xl bg-surface-900 border border-white/10 text-xs font-mono text-white" />
+                <button id="btnApplyLedCount" type="button" class="px-3.5 py-2 rounded-xl bg-surface-800 hover:bg-surface-700 text-slate-200 border border-white/10 text-xs font-medium cursor-pointer">Задать</button>
+              </div>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-surface-950/80 border border-white/5 space-y-3">
+              <div>
+                <label for="protocolSelect" class="text-xs font-medium text-slate-300 block mb-1.5">Тип протокола idealLED</label>
+                <select id="protocolSelect" class="w-full px-3 py-2 rounded-xl bg-surface-900 border border-white/10 text-xs text-white">
+                  <option value="AUTO">Автоопределение (по прошивке / UUID)</option>
+                  <option value="TYPE2">TYPE2 — TURN + SGLS + MULT + DOOD/DOOT (по умолч.)</option>
+                  <option value="TYPE1">TYPE1 — LEDON + COLO + LIGHT + EFF (R002–R005)</option>
+                  <option value="LEGACY">LEGACY — fff3 (TURN/COLOR/MODE/LEDNUM/RGB)</option>
+                </select>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button id="btnQueryVersion" type="button" class="px-3 py-2 rounded-xl bg-surface-800 hover:bg-surface-700 text-xs text-slate-200 border border-white/10 cursor-pointer">Запросить версию (VE)</button>
+                <button id="btnSyncTime" type="button" class="px-3 py-2 rounded-xl bg-surface-800 hover:bg-surface-700 text-xs text-slate-200 border border-white/10 cursor-pointer">Синхр. время (TIME)</button>
+              </div>
+              <div class="pt-1 border-t border-white/5 space-y-1.5">
+                <div class="flex justify-between text-[11px]">
+                  <span class="text-slate-400">Порядок RGB (для Legacy)</span>
+                  <span id="rgbOrderBadge" class="font-mono text-emerald-400">1: RGB</span>
+                </div>
+                <div class="grid grid-cols-6 gap-1">
+                  <button type="button" data-order="1" class="rgb-order-btn py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-[11px] font-mono text-slate-300 cursor-pointer">RGB</button>
+                  <button type="button" data-order="2" class="rgb-order-btn py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-[11px] font-mono text-slate-300 cursor-pointer">RBG</button>
+                  <button type="button" data-order="3" class="rgb-order-btn py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-[11px] font-mono text-slate-300 cursor-pointer">GRB</button>
+                  <button type="button" data-order="4" class="rgb-order-btn py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-[11px] font-mono text-slate-300 cursor-pointer">GBR</button>
+                  <button type="button" data-order="5" class="rgb-order-btn py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-[11px] font-mono text-slate-300 cursor-pointer">BRG</button>
+                  <button type="button" data-order="6" class="rgb-order-btn py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-[11px] font-mono text-slate-300 cursor-pointer">BGR</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BLE Packet Console -->
+        <div class="rounded-2xl bg-surface-900/90 border border-white/10 shadow-xl backdrop-blur-md overflow-hidden">
+          <div class="px-4 py-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <h2 class="text-sm font-semibold text-white">Консоль BLE-пакетов</h2>
+              <span id="packetCounterBadge" class="px-2 py-0.5 rounded-full bg-surface-800 text-[11px] font-mono text-slate-300">0</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="btnCopyLog" type="button" class="px-2.5 py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-xs text-slate-300 border border-white/10 cursor-pointer">Копировать</button>
+              <button id="btnClearLog" type="button" class="px-2.5 py-1.5 rounded-lg bg-surface-800 hover:bg-rose-500/20 text-xs text-slate-300 hover:text-rose-300 border border-white/10 cursor-pointer">Очистить</button>
+            </div>
+          </div>
+          <div class="p-4 space-y-2">
+            <div class="text-[11px] font-mono text-slate-400 flex flex-wrap justify-between gap-2">
+              <span>CMD: 9600/fff3 | DATA: 960a | NOTIFY: 9601/fff4</span>
+              <span id="aesStatusBadge" class="text-emerald-400">AES-128-ECB: проверка...</span>
+            </div>
+            <div id="packetLogList" class="h-64 overflow-y-auto rounded-xl bg-surface-950 border border-white/10 p-2.5 space-y-2 font-mono text-[11px]"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="border-t border-white/5 py-4 px-4 text-center text-xs text-slate-500">
+      Протокол <span class="text-slate-400 font-mono">8none1/idealLED</span> • AES-128-ECB • iPhone Bluefy &amp; Desktop Chrome
+    </footer>
+  </div>
+
+  <script src="/js/aes.js"></script>
+  <script src="/js/protocol.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

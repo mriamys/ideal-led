@@ -1,0 +1,17 @@
+{
+  "name": "idealLED BLE Studio",
+  "short_name": "idealLED",
+  "description": "Web Bluetooth контроллер светодиодных лент idealLED (iOS Bluefy / Chrome)",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07090e",
+  "theme_color": "#0c1018",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+.DS_Store
+Thumbs.db
+_ref_idealLED/
+*.log
+.env

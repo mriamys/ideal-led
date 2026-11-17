@@ -1,0 +1,7 @@
+services:
+  ideal-led:
+    build: .
+    container_name: ideal-led
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8088:80"
